@@ -112,6 +112,7 @@ ServerIds = [{quick_start, N} || N <- ErlangNodes],
 ClusterName = quick_start,
 %% State machine that implements the logic
 Machine = {simple, fun erlang:'+'/2, 0},
+System = default,
 
 %% Start a Ra cluster  with an addition state machine that has an initial state of 0.
 %% It's sufficient to invoke this function only on one Erlang node. For example, this
@@ -120,7 +121,7 @@ Machine = {simple, fun erlang:'+'/2, 0},
 %%
 %% Repeated startup attempts will fail even if the cluster is formed, has elected a leader
 %% and is fully functional.
-{ok, ServersStarted, _ServersNotStarted} = ra:start_cluster(ClusterName, Machine, ServerIds),
+{ok, ServersStarted, _ServersNotStarted} = ra:start_cluster(System, ClusterName, Machine, ServerIds),
 
 %% Add a number to the state machine.
 %% Simple state machines always return the full state after each operation.
