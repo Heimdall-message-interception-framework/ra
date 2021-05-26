@@ -77,6 +77,9 @@
 -type ra_cmd_ret() :: ra_server_proc:ra_cmd_ret().
 
 -type environment_param() ::
+    % MIL
+    {msg_int_layer, pid()} |
+    % LIM
     {data_dir, file:filename()} |
     {wal_data_dir, file:filename()} |
     {segment_max_entries, non_neg_integer()} |
@@ -747,7 +750,7 @@ process_command(ServerId, Command) ->
     process_command(ServerId, Command, ?DEFAULT_TIMEOUT).
 
 
-%% @doc Submits a command to the ra server using a gen_statem:cast, passing
+%% @doc Submits a command to the ra server using a gen_mi_statem:cast, passing
 %% an optional process-scoped term as correlation identifier.
 %% A correlation id can be included
 %% to implement reliable async interactions with the ra system. The calling
@@ -817,7 +820,7 @@ pipeline_command(ServerId, Command, Correlation) ->
     pipeline_command(ServerId, Command, Correlation, low).
 
 
-%% @doc Sends a command to the ra server using a gen_statem:cast without
+%% @doc Sends a command to the ra server using a gen_mi_statem:cast without
 %% any correlation identifier.
 %% Effectively the same as
 %% `ra:pipeline_command(ServerId, Command, low, no_correlation)'
@@ -957,11 +960,11 @@ transfer_leadership(ServerId, TargetServerId) ->
 
 -spec aux_command(ra_server_id(), term()) -> term().
 aux_command(ServerRef, Cmd) ->
-    gen_statem:call(ServerRef, {aux_command, Cmd}).
+    gen_mi_statem:call(ServerRef, {aux_command, Cmd}).
 
 -spec cast_aux_command(ra_server_id(), term()) -> ok.
 cast_aux_command(ServerRef, Cmd) ->
-    gen_statem:cast(ServerRef, {aux_command, Cmd}).
+    gen_mi_statem:cast(ServerRef, {aux_command, Cmd}).
 
 %% @doc Registers an external log reader. ServerId needs to be local to the node.
 %% Returns an initiated ra_log_reader:state() state.
@@ -970,7 +973,7 @@ cast_aux_command(ServerRef, Cmd) ->
     ra_log_reader:state().
 register_external_log_reader({_, Node} = ServerId)
  when Node =:= node() ->
-    {ok, Reader} = gen_statem:call(ServerId, {register_external_log_reader, self()}),
+    {ok, Reader} = gen_mi_statem:call(ServerId, {register_external_log_reader, self()}),
     Reader.
 
 %% internal

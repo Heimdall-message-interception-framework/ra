@@ -714,7 +714,7 @@ handle_leader({transfer_leadership, ServerId},
     ?DEBUG("~s: transfer leadership to ~w requested",
            [LogId, ServerId]),
     %% TODO find a timeout
-    gen_statem:cast(ServerId, try_become_leader),
+    gen_mi_statem:cast(ServerId, try_become_leader),
     {await_condition,
      State#{condition => fun transfer_leadership_condition/2,
             condition_timeout_changes => #{effects => [],

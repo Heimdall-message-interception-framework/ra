@@ -7,7 +7,7 @@
 %% @hidden
 -module(ra_server_proc).
 
--behaviour(gen_statem).
+-behaviour(gen_mi_statem).
 
 -compile({inline, [handle_raft_state/3]}).
 
@@ -29,7 +29,7 @@
          terminating_follower/3
         ]).
 
-%% gen_statem callbacks
+%% gen_mi_statem callbacks
 -export([
          init/1,
          format_status/2,
@@ -83,7 +83,7 @@
 
 -type ra_cmd_ret() :: ra_leader_call_ret(term()).
 
--type gen_statem_start_ret() :: {ok, pid()} | ignore | {error, term()}.
+-type gen_mi_statem_start_ret() :: {ok, pid()} | ignore | {error, term()}.
 
 -type safe_call_ret(T) :: timeout | {error, noproc | nodedown} | T.
 
@@ -129,7 +129,10 @@
                snapshot_chunk_size = ?DEFAULT_SNAPSHOT_CHUNK_SIZE :: non_neg_integer(),
                receive_snapshot_timeout = ?DEFAULT_RECEIVE_SNAPSHOT_TIMEOUT :: non_neg_integer(),
                aten_poll_interval = 1000 :: non_neg_integer(),
-               counter :: undefined | counters:counters_ref()
+               counter :: undefined | counters:counters_ref(),
+               % MIL
+               msg_int_layer :: undefined | pid()
+               % LIM
               }).
 
 -record(state, {conf :: #conf{},
@@ -149,10 +152,10 @@
 %%% API
 %%%===================================================================
 
--spec start_link(ra_server:ra_server_config()) -> gen_statem_start_ret().
+-spec start_link(ra_server:ra_server_config()) -> gen_mi_statem_start_ret().
 start_link(Config = #{id := Id}) ->
     Name = ra_lib:ra_server_id_to_local_name(Id),
-    gen_statem:start_link({local, Name}, ?MODULE, Config, []).
+    gen_mi_statem:start_link({local, Name}, ?MODULE, Config, []).
 
 -spec command(server_loc(), ra_command(), timeout()) ->
     ra_cmd_ret().
@@ -161,11 +164,11 @@ command(ServerLoc, Cmd, Timeout) ->
 
 -spec cast_command(ra_server_id(), ra_command()) -> ok.
 cast_command(ServerId, Cmd) ->
-    gen_statem:cast(ServerId, {command, low, Cmd}).
+    gen_mi_statem:cast(ServerId, {command, low, Cmd}).
 
 -spec cast_command(ra_server_id(), ra_command_priority(), ra_command()) -> ok.
 cast_command(ServerId, Priority, Cmd) ->
-    gen_statem:cast(ServerId, {command, Priority, Cmd}).
+    gen_mi_statem:cast(ServerId, {command, Priority, Cmd}).
 
 -spec query(server_loc(), query_fun(),
             local | consistent | leader, timeout()) ->
@@ -181,7 +184,7 @@ query(ServerLoc, QueryFun, consistent, Timeout) ->
 
 -spec log_fold(ra_server_id(), fun(), term(), integer()) -> term().
 log_fold(ServerId, Fun, InitialState, Timeout) ->
-    gen_statem:call(ServerId, {log_fold, Fun, InitialState}, Timeout).
+    gen_mi_statem:call(ServerId, {log_fold, Fun, InitialState}, Timeout).
 
 %% used to query the raft state rather than the machine state
 -spec state_query(server_loc(),
@@ -195,7 +198,7 @@ state_query(ServerLoc, Spec, Timeout) ->
 
 -spec trigger_election(ra_server_id(), timeout()) -> ok.
 trigger_election(ServerId, Timeout) ->
-    gen_statem:call(ServerId, trigger_election, Timeout).
+    gen_mi_statem:call(ServerId, trigger_election, Timeout).
 
 -spec transfer_leadership(ra_server_id(), ra_server_id(), timeout()) ->
     ok | already_leader | {error, term()} | {timeout, ra_server_id()}.
@@ -204,7 +207,7 @@ transfer_leadership(ServerId, TargetServerId, Timeout) ->
 
 -spec ping(ra_server_id(), timeout()) -> safe_call_ret({pong, states()}).
 ping(ServerId, Timeout) ->
-    gen_statem_safe_call(ServerId, ping, Timeout).
+    gen_mi_statem_safe_call(ServerId, ping, Timeout).
 
 leader_call(ServerLoc, Msg, Timeout) ->
     statem_call(ServerLoc, {leader_call, Msg}, Timeout).
@@ -213,7 +216,7 @@ statem_call(ServerIds, Msg, Timeout)
   when is_list(ServerIds) ->
     multi_statem_call(ServerIds, Msg, [], Timeout);
 statem_call(ServerId, Msg, Timeout) ->
-    case gen_statem_safe_call(ServerId, Msg, Timeout) of
+    case gen_mi_statem_safe_call(ServerId, Msg, Timeout) of
         {redirect, Leader} ->
             statem_call(Leader, Msg, Timeout);
         {wrap_reply, Reply} ->
@@ -241,7 +244,7 @@ multi_statem_call([ServerId | ServerIds], Msg, Errs, Timeout) ->
     end.
 
 %%%===================================================================
-%%% gen_statem callbacks
+%%% gen_mi_statem callbacks
 %%%===================================================================
 
 init(Config0 = #{id := Id, cluster_name := ClusterName}) ->
@@ -279,6 +282,9 @@ init(Config0 = #{id := Id, cluster_name := ClusterName}) ->
     ReceiveSnapshotTimeout = application:get_env(ra, receive_snapshot_timeout,
                                                  ?DEFAULT_RECEIVE_SNAPSHOT_TIMEOUT),
     AtenPollInt = application:get_env(aten, poll_interval, 1000),
+    % MIL
+    MsgIntLayer = application:get_env(ra, msg_int_layer, undefined),
+    % LIM
     State = #state{conf = #conf{log_id = LogId,
                                 cluster_name = ClusterName,
                                 name = Key,
@@ -289,7 +295,11 @@ init(Config0 = #{id := Id, cluster_name := ClusterName}) ->
                                 snapshot_chunk_size = SnapshotChunkSize,
                                 receive_snapshot_timeout = ReceiveSnapshotTimeout,
                                 aten_poll_interval = AtenPollInt,
-                                counter = Counter},
+                                counter = Counter,
+                                % MIL
+                                msg_int_layer = MsgIntLayer
+                                % LIM
+                                },
                    server_state = ServerState},
     ok = net_kernel:monitor_nodes(true, [nodedown_reason]),
     {ok, recover, State, [{next_event, cast, go}]}.
@@ -354,11 +364,11 @@ leader(EventType, {command, low, {CmdType, Data, ReplyMode}},
     %% (and thus no action queued to do so)
     %% queue a state timeout to flush them
     %% We use a cast to ourselves instead of a zero timeout as we want to
-    %% get onto the back of the erlang mailbox not just the current gen_statem
+    %% get onto the back of the erlang mailbox not just the current gen_mi_statem
     %% event buffer.
     case queue:is_empty(Delayed) of
         true ->
-            ok = gen_statem:cast(self(), flush_commands);
+            ok = gen_mi_statem:cast(self(), flush_commands);
         false ->
             ok
     end,
@@ -387,7 +397,7 @@ leader(EventType, flush_commands,
         true ->
             ok;
         false ->
-            ok = gen_statem:cast(self(), flush_commands)
+            ok = gen_mi_statem:cast(self(), flush_commands)
     end,
     {keep_state, State#state{delayed_commands = DelQ}, Actions};
 leader({call, From}, {local_query, QueryFun},
@@ -990,7 +1000,7 @@ perform_local_query(QueryFun, Leader, ServerState, Conf) ->
 handle_effects(RaftState, Effects0, EvtType, State0) ->
     handle_effects(RaftState, Effects0, EvtType, State0, []).
 % effect handler: either executes an effect or builds up a list of
-% gen_statem 'Actions' to be returned.
+% gen_mi_statem 'Actions' to be returned.
 handle_effects(RaftState, Effects0, EvtType, State0, Actions0) ->
     {State, Actions} = lists:foldl(
                          fun(Effects, {State, Actions}) when is_list(Effects) ->
@@ -1019,7 +1029,7 @@ handle_effect(_, {send_rpc, To, Rpc}, _,
                                  %% AFAIK none of the below code will throw and
                                  %% exception so we should always end up setting
                                  %% the peer status back to normal
-                                 ok = gen_statem:cast(To, Rpc),
+                                 ok = gen_mi_statem:cast(To, Rpc),
                                  incr_counter(Conf, ?C_RA_SRV_MSGS_SENT, 1),
                                  Self ! {update_peer, To, #{status => normal}}
                          end),
@@ -1105,11 +1115,11 @@ handle_effect(_, {cast, To, Msg}, _, State, Actions) ->
     {State, Actions};
 handle_effect(_, {reply, From, Reply}, _, State, Actions) ->
     % reply directly
-    ok = gen_statem:reply(From, Reply),
+    ok = gen_mi_statem:reply(From, Reply),
     {State, Actions};
 handle_effect(_, {reply, Reply}, {call, From}, State, Actions) ->
     % reply directly
-    ok = gen_statem:reply(From, Reply),
+    ok = gen_mi_statem:reply(From, Reply),
     {State, Actions};
 handle_effect(_, {reply, Reply}, EvtType, _, _) ->
     exit({undefined_reply, Reply, EvtType});
@@ -1155,8 +1165,8 @@ handle_effect(_, {send_vote_requests, VoteRequests}, _, % EvtType
     T = {dirty_timeout, 500},
     Me = self(),
     [begin
-         _ = spawn(fun () -> Reply = gen_statem:call(N, M, T),
-                             ok = gen_statem:cast(Me, Reply)
+         _ = spawn(fun () -> Reply = gen_mi_statem:call(N, M, T),
+                             ok = gen_mi_statem:cast(Me, Reply)
                    end)
      end || {N, M} <- VoteRequests],
     {State, Actions};
@@ -1268,7 +1278,7 @@ machine_version(#state{server_state = ServerState}) ->
 process_pending_queries(NewLeader,
                         #state{server_state = ServerState0} = State) ->
     {ServerState, Froms} = ra_server:process_new_leader_queries(ServerState0),
-    [_ = gen_statem:reply(F, {redirect, NewLeader})
+    [_ = gen_mi_statem:reply(F, {redirect, NewLeader})
      || F <- Froms],
     State#state{server_state = ServerState}.
 
@@ -1313,7 +1323,7 @@ follower_leader_change(Old, #state{pending_commands = Pending,
             % leader has either changed or just been set
             ?INFO("~s: detected a new leader ~w in term ~b",
                   [log_id(New), NewLeader, current_term(New)]),
-            [ok = gen_statem:reply(From, {redirect, NewLeader})
+            [ok = gen_mi_statem:reply(From, {redirect, NewLeader})
              || {From, _Data} <- Pending],
             process_pending_queries(NewLeader,
                                     New#state{pending_commands = [],
@@ -1337,9 +1347,9 @@ stop_monitor(MRef) ->
     erlang:demonitor(MRef),
     ok.
 
-gen_statem_safe_call(ServerId, Msg, Timeout) ->
+gen_mi_statem_safe_call(ServerId, Msg, Timeout) ->
     try
-        gen_statem:call(ServerId, Msg, Timeout)
+        gen_mi_statem:call(ServerId, Msg, Timeout)
     catch
          exit:{timeout, _} ->
             timeout;
@@ -1434,7 +1444,7 @@ send_snapshots(Me, Id, Term, To, ChunkSize, SnapState) ->
 
     Result = read_chunks_and_send_rpc(RPC, To, ReadState, 1,
                                       ChunkSize, SnapState),
-    ok = gen_statem:cast(Me, {To, Result}).
+    ok = gen_mi_statem:cast(Me, {To, Result}).
 
 read_chunks_and_send_rpc(RPC0,
                          To, ReadState0, Num, ChunkSize, SnapState) ->
@@ -1448,7 +1458,7 @@ read_chunks_and_send_rpc(RPC0,
     %% rpcs
     RPC1 = RPC0#install_snapshot_rpc{chunk_state = {Num, ChunkFlag},
                                      data = Data},
-    Res1 = gen_statem:call(To, RPC1,
+    Res1 = gen_mi_statem:call(To, RPC1,
                            {dirty_timeout, ?INSTALL_SNAP_RPC_TIMEOUT}),
     case ContState of
         {next, ReadState1} ->

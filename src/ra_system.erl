@@ -65,6 +65,9 @@ default_config() ->
     WalMaxEntries = application:get_env(ra, wal_max_entries, undefined),
     WalWriteStrategy = application:get_env(ra, wal_write_strategy, default),
     WalSyncMethod = application:get_env(ra, wal_sync_method, datasync),
+    % MIL
+    MsgIntLayer = application:get_env(ra, msg_int_layer, undefined),
+    % LIM
     #{name => default,
       data_dir => ra_env:data_dir(),
       wal_data_dir => ra_env:data_dir(),
@@ -75,6 +78,9 @@ default_config() ->
       wal_write_strategy => WalWriteStrategy,
       wal_sync_method => WalSyncMethod,
       segment_max_entries => SegmentMaxEntries,
+      % MIL
+      msg_int_layer => MsgIntLayer,
+      % LIM
       names =>
       #{wal => ra_log_wal,
         wal_sup => ra_log_wal_sup,
