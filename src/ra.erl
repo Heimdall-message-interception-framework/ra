@@ -735,6 +735,7 @@ overview(System) ->
     {error, term()} |
     {timeout, ra_server_id()}.
 process_command(ServerId, Cmd, Timeout) ->
+    erlang:display(["r:738", "self", self(), "ServerId", ServerId, "Cmd", Cmd, "Timeout", Timeout]),
     ra_server_proc:command(ServerId, usr(Cmd, await_consensus), Timeout).
 
 %% @doc Same as `process_command/3' with the default timeout of 5000 ms.
@@ -921,6 +922,7 @@ consistent_query(ServerId, QueryFun) ->
                        Timeout :: timeout()) ->
     ra_server_proc:ra_leader_call_ret(Reply :: term()).
 consistent_query(ServerId, QueryFun, Timeout) ->
+    erlang:display(["r:925", "self", self(), "ServerId", ServerId, "QueryFun", QueryFun, "Timeout", Timeout]),
     ra_server_proc:query(ServerId, QueryFun, consistent, Timeout).
 
 %% @doc Returns a list of cluster members
@@ -960,10 +962,12 @@ transfer_leadership(ServerId, TargetServerId) ->
 
 -spec aux_command(ra_server_id(), term()) -> term().
 aux_command(ServerRef, Cmd) ->
+    ok = io:fwrite("r:963 - self : ~p; ServerRef : ~p; aux_command; Cmd : ~p ~n", [self(), ServerRef, Cmd]),
     gen_mi_statem:call(ServerRef, {aux_command, Cmd}).
 
 -spec cast_aux_command(ra_server_id(), term()) -> ok.
 cast_aux_command(ServerRef, Cmd) ->
+    ok = io:fwrite("r:968 - self : ~p; ServerRef : ~p; aux_command; Cmd : ~p ~n", [self(), ServerRef, Cmd]),
     gen_mi_statem:cast(ServerRef, {aux_command, Cmd}).
 
 %% @doc Registers an external log reader. ServerId needs to be local to the node.
@@ -973,6 +977,7 @@ cast_aux_command(ServerRef, Cmd) ->
     ra_log_reader:state().
 register_external_log_reader({_, Node} = ServerId)
  when Node =:= node() ->
+    ok = io:fwrite("r:978 - self : ~p; ServerId : ~p; register_external_log_reader ~n", [self(), ServerId]),
     {ok, Reader} = gen_mi_statem:call(ServerId, {register_external_log_reader, self()}),
     Reader.
 

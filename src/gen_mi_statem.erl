@@ -549,7 +549,16 @@ stop(ServerRef, Reason, Timeout) ->
 %% Send an event to a state machine that arrives with type 'event'
 -spec cast(ServerRef :: server_ref(), Msg :: term()) -> ok.
 cast(ServerRef, Msg) when is_pid(ServerRef) ->
-    erlang:display("t1"),
+%%  MIL
+    MIL = application:get_env(ra, msg_int_layer, undefined),
+    case MIL of
+      undefined -> ok;
+%%       here ServerRef is a PID
+      _ -> gen_server:cast(MIL, {bang, {self(), ServerRef, Msg}})
+    end,
+%%  LIM
+    erlang:display(["CAST req", "self", self(), "ServerRef", ServerRef, "Msg", Msg]),
+%%  MIL TO DO, sends here in statem
     send(ServerRef, wrap_cast(Msg));
 cast(ServerRef, Msg) when is_atom(ServerRef) ->
     erlang:display("t2"),
@@ -637,6 +646,17 @@ reply(Replies) when is_list(Replies) ->
 -compile({inline, [reply/2]}).
 -spec reply(From :: from(), Reply :: term()) -> ok.
 reply(From, Reply) ->
+    erlang:display(["REPLY req", "self", self(), "From", From, "Reply", Reply]),
+  %%  MIL
+    MIL = application:get_env(ra, msg_int_layer, undefined),
+    case MIL of
+      undefined -> ok;
+      %%       here ServerRef is a PID
+      _ -> {FromWoRef, _} = From,
+           gen_server:cast(MIL, {bang, {self(), FromWoRef, Reply}})
+    end,
+  %%  LIM
+%%  MIL DO IT
     gen:reply(From, Reply).
 
 %% Instead of starting the state machine through start/3,4
@@ -688,6 +708,16 @@ wrap_cast(Event) ->
     {'$gen_cast',Event}.
 
 call_dirty(ServerRef, Request, Timeout, T) ->
+    erlang:display(["CALL req", "self", self(), "ServerRef", ServerRef, "Request", Request]),
+%%  MIL
+    MIL = application:get_env(ra, msg_int_layer, undefined),
+    case MIL of
+      undefined -> ok;
+  %%       here ServerRef is a PID
+      _ -> gen_server:cast(MIL, {bang, {self(), ServerRef, Request}})
+    end,
+%%  LIM
+%%  MIL DO IT -> need to go into gen:call?!
     try gen:call(ServerRef, '$gen_call', Request, T) of
         {ok,Reply} ->
             Reply
@@ -715,20 +745,34 @@ call_clean(ServerRef, Request, Timeout, T) ->
     %% communicate with a node that does not understand aliases.
     %% This can be removed when alias support is mandatory.
     %% Probably in OTP 26.
+    erlang:display(["CALL true clean req", "self", self(), "ServerRef", ServerRef, "Request", Request]),
     Ref = make_ref(),
     Self = self(),
     Pid = spawn(
             fun () ->
-                    Self !
-                        try gen:call(
-                              ServerRef, '$gen_call', Request, T) of
-                            Result ->
-                                {Ref,Result}
-                        catch Class:Reason:Stacktrace ->
-                                {Ref,Class,Reason,Stacktrace}
-                        end
+%%              MIL
+              MIL = application:get_env(ra, msg_int_layer, undefined),
+              case MIL of
+                undefined -> ok;
+                %%%%       here ServerRef is a PID
+                _ -> gen_server:cast(MIL, {register, {list_to_atom(pid_to_list(self())), self(), middle_proc}}),
+%%                  XXX
+                     gen_server:cast(MIL, {bang, {self(), ServerRef, Request}})
+              end,
+              erlang:display(["SPAWN of CALL true clean req", "self", self(), "ServerRef", ServerRef, "Request", Request]),
+%%            MIL DO IT
+              Response = try gen:call(
+                          ServerRef, '$gen_call', Request, T) of
+                          Result ->
+                            {Ref,Result}
+                       catch Class:Reason:Stacktrace ->
+                          {Ref,Class,Reason,Stacktrace}
+                       end,
+              gen_server:cast(MIL, {bang, {self(), Self, Response}}),
+              Self ! Response
+%%              LIM; before the Response was inlined in the send operation
             end),
-    Mref = monitor(process, Pid),
+  Mref = monitor(process, Pid),
     receive
         {Ref,Result} ->
             demonitor(Mref, [flush]),
@@ -765,8 +809,14 @@ send(Proc, Msg) ->
 
 %% Here the init_it/6 and enter_loop/5,6,7 functions converge
 enter(
+    Parent, Debug, Module, Name, HibernateAfterTimeout,
+    State, Data, Actions) ->
+  enter(Parent, Debug, Module, Name, HibernateAfterTimeout,
+        State, Data, Actions, undefined).
+
+enter(
   Parent, Debug, Module, Name, HibernateAfterTimeout,
-  State, Data, Actions) ->
+  State, Data, Actions, MIL) ->
     %% The values should already have been type checked
     Q = [{internal,init_state}],
     %% We enforce {postpone,false} to ensure that
@@ -778,7 +828,7 @@ enter(
            modules = [Module],
            name = Name,
            hibernate_after = HibernateAfterTimeout},
-    S = #state{state_data = {State,Data}},
+    S = #state{state_data = {State,Data}, msg_int_layer = MIL},
     Debug_1 = ?sys_debug(Debug, Name, {enter,State}),
     loop_state_callback(
       P, Debug_1, S, Q, {State,Data},
@@ -830,20 +880,29 @@ init_result(
               Parent, Debug, Module, Name, HibernateAfterTimeout,
               State, Data, []);
 	{ok,State,Data,Actions} ->
-	    proc_lib:init_ack(Starter, {ok,self()}),
+      proc_lib:init_ack(Starter, {ok,self()}),
             enter(
               Parent, Debug, Module, Name, HibernateAfterTimeout,
               State, Data, Actions);
-	{stop,Reason} ->
-	    gen:unregister_name(ServerRef),
+%%      MIL
+  {ok,State,Data,Actions,MIL} ->
+      proc_lib:init_ack(Starter, {ok,self()}),
+      %% register process with MIL; FIX: function call?
+      gen_server:cast(MIL, {register, {Name, whereis(Name), Module}}),
+      enter(
+        Parent, Debug, Module, Name, HibernateAfterTimeout,
+        State, Data, Actions, MIL);
+%%      LIM
+  {stop,Reason} ->
+      gen:unregister_name(ServerRef),
 	    proc_lib:init_ack(Starter, {error,Reason}),
 	    exit(Reason);
 	ignore ->
-	    gen:unregister_name(ServerRef),
+      gen:unregister_name(ServerRef),
 	    proc_lib:init_ack(Starter, ignore),
 	    exit(normal);
 	_ ->
-	    gen:unregister_name(ServerRef),
+      gen:unregister_name(ServerRef),
 	    Error = {bad_return_from_init,Result},
 	    proc_lib:init_ack(Starter, {error,Error}),
 	    error_info(

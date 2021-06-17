@@ -601,6 +601,7 @@ handle_leader(#append_entries_rpc{leader_id = LeaderId},
     Reply = append_entries_reply(CurTerm, false, State0),
     {leader, State0, [cast_reply(Id, LeaderId, Reply)]};
 handle_leader({consistent_query, From, QueryFun},
+%%    XXX
               #{commit_index := CommitIndex,
                 cluster_change_permitted := true} = State0) ->
     QueryRef = {From, QueryFun, CommitIndex},
@@ -714,6 +715,7 @@ handle_leader({transfer_leadership, ServerId},
     ?DEBUG("~s: transfer leadership to ~w requested",
            [LogId, ServerId]),
     %% TODO find a timeout
+    erlang:display(["rs:717", "self", self(), "ServerId", ServerId, "try_become_leader"]),
     gen_mi_statem:cast(ServerId, try_become_leader),
     {await_condition,
      State#{condition => fun transfer_leadership_condition/2,
