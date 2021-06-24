@@ -205,9 +205,10 @@ trigger_election(ServerId, Timeout) ->
     MIL = application:get_env(ra, msg_int_layer, undefined),
     case MIL of
       undefined -> ok;
-      _ -> gen_server:cast(MIL, {register, {list_to_atom(pid_to_list(self())), self(), client}})
-    end,
-%%  LIM
+      _ -> message_interception_layer:register_with_name(MIL,
+              list_to_atom(pid_to_list(self())), self(), client)
+  end,
+  %%  LIM
   erlang:display(["rsp:204", "self", self(), "ServerId", ServerId, "Timeout", Timeout]),
   gen_mi_statem:call(ServerId, trigger_election, Timeout).
 
@@ -1046,11 +1047,12 @@ handle_effect(_, {send_rpc, To, Rpc}, _,
                                  %% the peer status back to normal
 %%              MIL
                                  MIL = application:get_env(ra, msg_int_layer, undefined),
-                                     case MIL of
-                                       undefined -> ok;
-                                 %%%%       here ServerRef is a PID
-                                       _ -> gen_server:cast(MIL, {register, {list_to_atom(pid_to_list(self())), self(), middle_proc}})
-                                     end,
+                                 case MIL of
+                                   undefined -> ok;
+                             %%%%       here ServerRef is a PID
+                                   _ -> message_interception_layer:register_with_name(MIL,
+                                        list_to_atom(pid_to_list(self())), self(), middle_proc)
+                                 end,
 %%              LIM
                                  erlang:display(["rsp:1040 - Self : ?; self : ?; To : ?; Rpc : ? ", Self, self(), To, Rpc]),
                                  ok = gen_mi_statem:cast(To, Rpc),
@@ -1198,7 +1200,8 @@ handle_effect(_, {send_vote_requests, VoteRequests}, _, % EvtType
              case MIL of
                undefined -> ok;
                %%%%       here ServerRef is a PID
-               _ -> gen_server:cast(MIL, {register, {list_to_atom(pid_to_list(self())), self(), middle_proc}})
+               _ -> message_interception_layer:register_with_name(MIL,
+                 list_to_atom(pid_to_list(self())), self(), middle_proc)
              end,
 %%           LIM
              erlang:display(["rsp:1180", "self", self(), "N", N, "M", M, "T", T]),
