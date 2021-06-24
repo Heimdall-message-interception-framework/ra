@@ -497,68 +497,60 @@ timeout_event_type(Type) ->
 	Module :: module(), Args :: term(), Opts :: [start_opt()]) ->
 		   start_ret().
 start(Module, Args, Opts) ->
-    gen:start(?MODULE, nolink, Module, Args, Opts).
+    gen_mi:start(?MODULE, nolink, Module, Args, Opts).
 %%
 -spec start(
 	ServerName :: server_name(),
 	Module :: module(), Args :: term(), Opts :: [start_opt()]) ->
 		   start_ret().
 start(ServerName, Module, Args, Opts) ->
-    gen:start(?MODULE, nolink, ServerName, Module, Args, Opts).
+    gen_mi:start(?MODULE, nolink, ServerName, Module, Args, Opts).
 
 %% Start and link to a state machine
 -spec start_link(
 	Module :: module(), Args :: term(), Opts :: [start_opt()]) ->
 		   start_ret().
 start_link(Module, Args, Opts) ->
-    gen:start(?MODULE, link, Module, Args, Opts).
+    gen_mi:start(?MODULE, link, Module, Args, Opts).
 %%
 -spec start_link(
 	ServerName :: server_name(),
 	Module :: module(), Args :: term(), Opts :: [start_opt()]) ->
 		   start_ret().
 start_link(ServerName, Module, Args, Opts) ->
-    gen:start(?MODULE, link, ServerName, Module, Args, Opts).
+    gen_mi:start(?MODULE, link, ServerName, Module, Args, Opts).
 
 %% Start and monitor a state machine
 -spec start_monitor(
 	Module :: module(), Args :: term(), Opts :: [start_opt()]) ->
 		   start_mon_ret().
 start_monitor(Module, Args, Opts) ->
-    gen:start(?MODULE, monitor, Module, Args, Opts).
+    gen_mi:start(?MODULE, monitor, Module, Args, Opts).
 %%
 -spec start_monitor(
 	ServerName :: server_name(),
 	Module :: module(), Args :: term(), Opts :: [start_opt()]) ->
 		   start_mon_ret().
 start_monitor(ServerName, Module, Args, Opts) ->
-    gen:start(?MODULE, monitor, ServerName, Module, Args, Opts).
+    gen_mi:start(?MODULE, monitor, ServerName, Module, Args, Opts).
 
 %% Stop a state machine
 -spec stop(ServerRef :: server_ref()) -> ok.
 stop(ServerRef) ->
-    gen:stop(ServerRef).
+    gen_mi:stop(ServerRef).
 %%
 -spec stop(
 	ServerRef :: server_ref(),
 	Reason :: term(),
 	Timeout :: timeout()) -> ok.
 stop(ServerRef, Reason, Timeout) ->
-    gen:stop(ServerRef, Reason, Timeout).
+    gen_mi:stop(ServerRef, Reason, Timeout).
 
 %% Send an event to a state machine that arrives with type 'event'
 -spec cast(ServerRef :: server_ref(), Msg :: term()) -> ok.
 cast(ServerRef, Msg) when is_pid(ServerRef) ->
-%%  MIL
-    MIL = application:get_env(ra, msg_int_layer, undefined),
-    case MIL of
-      undefined -> ok;
-%%       here ServerRef is a PID
-      _ -> gen_server:cast(MIL, {bang, {self(), ServerRef, Msg}})
-    end,
-%%  LIM
     erlang:display(["CAST req", "self", self(), "ServerRef", ServerRef, "Msg", Msg]),
-%%  MIL TO DO, sends here in statem
+%%  MIL DO IT, sends here in statem
     send(ServerRef, wrap_cast(Msg));
 cast(ServerRef, Msg) when is_atom(ServerRef) ->
     erlang:display("t2"),
@@ -609,32 +601,32 @@ call(ServerRef, Request, Timeout) ->
 -spec send_request(ServerRef::server_ref(), Request::term()) ->
         RequestId::request_id().
 send_request(Name, Request) ->
-    gen:send_request(Name, '$gen_call', Request).
+    gen_mi:send_request(Name, '$gen_call', Request).
 
 -spec wait_response(RequestId::request_id()) ->
         {reply, Reply::term()} | {error, {term(), server_ref()}}.
 wait_response(RequestId) ->
-    gen:wait_response(RequestId, infinity).
+    gen_mi:wait_response(RequestId, infinity).
 
 -spec wait_response(RequestId::request_id(), timeout()) ->
         {reply, Reply::term()} | 'timeout' | {error, {term(), server_ref()}}.
 wait_response(RequestId, Timeout) ->
-    gen:wait_response(RequestId, Timeout).
+    gen_mi:wait_response(RequestId, Timeout).
 
 -spec receive_response(RequestId::request_id()) ->
         {reply, Reply::term()} | {error, {term(), server_ref()}}.
 receive_response(RequestId) ->
-    gen:receive_response(RequestId, infinity).
+    gen_mi:receive_response(RequestId, infinity).
 
 -spec receive_response(RequestId::request_id(), timeout()) ->
         {reply, Reply::term()} | 'timeout' | {error, {term(), server_ref()}}.
 receive_response(RequestId, Timeout) ->
-    gen:receive_response(RequestId, Timeout).
+    gen_mi:receive_response(RequestId, Timeout).
 
 -spec check_response(Msg::term(), RequestId::request_id()) ->
         {reply, Reply::term()} | 'no_reply' | {error, {term(), server_ref()}}.
 check_response(Msg, RequestId) ->
-    gen:check_response(Msg, RequestId).
+    gen_mi:check_response(Msg, RequestId).
 
 %% Reply from a state machine callback to whom awaits in call/2
 -spec reply([reply_action()] | reply_action()) -> ok.
@@ -648,16 +640,16 @@ reply(Replies) when is_list(Replies) ->
 reply(From, Reply) ->
     erlang:display(["REPLY req", "self", self(), "From", From, "Reply", Reply]),
   %%  MIL
+%%  decided not to do this layer deeper since there are three cases then
     MIL = application:get_env(ra, msg_int_layer, undefined),
     case MIL of
       undefined -> ok;
-      %%       here ServerRef is a PID
       _ -> {FromWoRef, _} = From,
-           gen_server:cast(MIL, {bang, {self(), FromWoRef, Reply}})
+           message_interception_layer:msg_command(MIL, self(), FromWoRef, gen_mi, reply, [From, Reply])
     end,
+%%    gen_mi:reply(From, Reply). % MIL REM 4 removed for MIL
+    ok. % added this is the only return value of this function
   %%  LIM
-%%  MIL DO IT
-    gen:reply(From, Reply).
 
 %% Instead of starting the state machine through start/3,4
 %% or start_link/3,4 turn the current process presumably
@@ -692,10 +684,10 @@ enter_loop(Module, Opts, State, Data, Server_or_Actions) ->
 			no_return().
 enter_loop(Module, Opts, State, Data, Server, Actions) ->
     is_atom(Module) orelse error({atom,Module}),
-    Parent = gen:get_parent(),
-    Name = gen:get_proc_name(Server),
-    Debug = gen:debug_options(Name, Opts),
-    HibernateAfterTimeout = gen:hibernate_after(Opts),
+    Parent = gen_mi:get_parent(),
+    Name = gen_mi:get_proc_name(Server),
+    Debug = gen_mi:debug_options(Name, Opts),
+    HibernateAfterTimeout = gen_mi:hibernate_after(Opts),
     enter(
       Parent, Debug, Module, Name, HibernateAfterTimeout,
       State, Data, Actions).
@@ -709,16 +701,7 @@ wrap_cast(Event) ->
 
 call_dirty(ServerRef, Request, Timeout, T) ->
     erlang:display(["CALL req", "self", self(), "ServerRef", ServerRef, "Request", Request]),
-%%  MIL
-    MIL = application:get_env(ra, msg_int_layer, undefined),
-    case MIL of
-      undefined -> ok;
-  %%       here ServerRef is a PID
-      _ -> gen_server:cast(MIL, {bang, {self(), ServerRef, Request}})
-    end,
-%%  LIM
-%%  MIL DO IT -> need to go into gen:call?!
-    try gen:call(ServerRef, '$gen_call', Request, T) of
+    try gen_mi:call(ServerRef, '$gen_call', Request, T) of
         {ok,Reply} ->
             Reply
     catch
@@ -754,44 +737,49 @@ call_clean(ServerRef, Request, Timeout, T) ->
               MIL = application:get_env(ra, msg_int_layer, undefined),
               case MIL of
                 undefined -> ok;
-                %%%%       here ServerRef is a PID
-                _ -> gen_server:cast(MIL, {register, {list_to_atom(pid_to_list(self())), self(), middle_proc}}),
-%%                  XXX
-                     gen_server:cast(MIL, {bang, {self(), ServerRef, Request}})
+                _ -> message_interception_layer:register_with_name(MIL,
+                       list_to_atom(pid_to_list(self())), self(), middle_proc)
               end,
               erlang:display(["SPAWN of CALL true clean req", "self", self(), "ServerRef", ServerRef, "Request", Request]),
-%%            MIL DO IT
-              Response = try gen:call(
+              Response = try gen_mi:call(
                           ServerRef, '$gen_call', Request, T) of
                           Result ->
                             {Ref,Result}
                        catch Class:Reason:Stacktrace ->
                           {Ref,Class,Reason,Stacktrace}
                        end,
-              gen_server:cast(MIL, {bang, {self(), Self, Response}}),
-              Self ! Response
+              erlang:display(["Response", Response]),
+%%              according to documentation of erlang:send the same as !
+              message_interception_layer:msg_command(MIL, self(), Self, erlang, send, [Self, Response]),
+              Response % return value?
+%%              Self ! Response % MIL REM 5 removed for MIL
 %%              LIM; before the Response was inlined in the send operation
             end),
-  Mref = monitor(process, Pid),
-    receive
-        {Ref,Result} ->
-            demonitor(Mref, [flush]),
-            case Result of
-                {ok,Reply} ->
-                    Reply
-            end;
-        {Ref,Class,Reason,Stacktrace} ->
-            demonitor(Mref, [flush]),
-            erlang:raise(
-              Class,
-              {Reason,{?MODULE,call,[ServerRef,Request,Timeout]}},
-              Stacktrace);
-        {'DOWN',Mref,_,_,Reason} ->
+%%  MIL: removed monitoring since the process dies early, TODO: fix differently
+%%      Mref = monitor(process, Pid),
+      receive
+          {Ref,Result} ->
+              erlang:display("gen_mi_stm:761"),
+%%              demonitor(Mref, [flush]),
+              case Result of
+                  {ok,Reply} ->
+                      Reply
+              end;
+          {Ref,Class,Reason,Stacktrace} ->
+            erlang:display("gen_mi_stm:768"),
+%%            demonitor(Mref, [flush]),
+              erlang:raise(
+                Class,
+                {Reason,{?MODULE,call,[ServerRef,Request,Timeout]}},
+                Stacktrace)
+%%          {'DOWN',Mref,_,_,Reason} ->
+%%            erlang:display("gen_mi_stm:775"),
             %% There is a theoretical possibility that the
-            %% proxy process gets killed between try--of and !
-            %% so this clause is in case of that
-            exit(Reason)
-    end.
+              %% proxy process gets killed between try--of and !
+              %% so this clause is in case of that
+%%              exit(Reason)
+%%      LIM
+      end.
 
 replies([{reply,From,Reply}|Replies]) ->
     reply(From, Reply),
@@ -801,10 +789,18 @@ replies([]) ->
 
 %% Might actually not send the message in case of caught exception
 send(Proc, Msg) ->
-    try erlang:send(Proc, Msg)
-    catch
-        error:_ -> ok
+  %%  MIL
+    MIL = application:get_env(ra, msg_int_layer, undefined),
+    case MIL of
+      undefined -> ok;
+      _ -> message_interception_layer:msg_command(MIL, self(), Proc, erlang, send, [Proc, Msg])
     end,
+%%  MIL REM 3 removed for MIL but TODO: error handling?
+%%    try erlang:send(Proc, Msg)
+%%    catch
+%%      error:_ -> ok
+%%    end,
+  %%  LIM
     ok.
 
 %% Here the init_it/6 and enter_loop/5,6,7 functions converge
@@ -844,9 +840,9 @@ enter(
 init_it(Starter, self, ServerRef, Module, Args, Opts) ->
     init_it(Starter, self(), ServerRef, Module, Args, Opts);
 init_it(Starter, Parent, ServerRef, Module, Args, Opts) ->
-    Name = gen:get_proc_name(ServerRef),
-    Debug = gen:debug_options(Name, Opts),
-    HibernateAfterTimeout = gen:hibernate_after(Opts),
+    Name = gen_mi:get_proc_name(ServerRef),
+    Debug = gen_mi:debug_options(Name, Opts),
+    HibernateAfterTimeout = gen_mi:hibernate_after(Opts),
     try Module:init(Args) of
 	Result ->
 	    init_result(
@@ -858,7 +854,7 @@ init_it(Starter, Parent, ServerRef, Module, Args, Opts) ->
               Starter, Parent, ServerRef, Module, Result,
               Name, Debug, HibernateAfterTimeout);
 	Class:Reason:Stacktrace ->
-	    gen:unregister_name(ServerRef),
+	    gen_mi:unregister_name(ServerRef),
 	    proc_lib:init_ack(Starter, {error,Reason}),
 	    error_info(
 	      Class, Reason, Stacktrace, Debug,
@@ -888,21 +884,21 @@ init_result(
   {ok,State,Data,Actions,MIL} ->
       proc_lib:init_ack(Starter, {ok,self()}),
       %% register process with MIL; FIX: function call?
-      gen_server:cast(MIL, {register, {Name, whereis(Name), Module}}),
+      message_interception_layer:register_with_name(MIL, Name, whereis(Name), Module),
       enter(
         Parent, Debug, Module, Name, HibernateAfterTimeout,
         State, Data, Actions, MIL);
 %%      LIM
   {stop,Reason} ->
-      gen:unregister_name(ServerRef),
+      gen_mi:unregister_name(ServerRef),
 	    proc_lib:init_ack(Starter, {error,Reason}),
 	    exit(Reason);
 	ignore ->
-      gen:unregister_name(ServerRef),
+      gen_mi:unregister_name(ServerRef),
 	    proc_lib:init_ack(Starter, ignore),
 	    exit(normal);
 	_ ->
-      gen:unregister_name(ServerRef),
+      gen_mi:unregister_name(ServerRef),
 	    Error = {bad_return_from_init,Result},
 	    proc_lib:init_ack(Starter, {error,Error}),
 	    error_info(
@@ -961,7 +957,7 @@ format_status(
   [PDict,SysState,Parent,Debug,
    {#params{name = Name, modules = Modules} = P,
     #state{postponed = Postponed, timers = Timers} = S}]) ->
-    Header = gen:format_status_header("Status for state machine", Name),
+    Header = gen_mi:format_status_header("Status for state machine", Name),
     Log = sys:get_log(Debug),
     [{header,Header},
      {data,

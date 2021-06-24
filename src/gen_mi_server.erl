@@ -195,22 +195,22 @@
 %%%          {error, Reason}
 %%% -----------------------------------------------------------------
 start(Mod, Args, Options) ->
-    gen:start(?MODULE, nolink, Mod, Args, Options).
+    gen_mi:start(?MODULE, nolink, Mod, Args, Options).
 
 start(Name, Mod, Args, Options) ->
-    gen:start(?MODULE, nolink, Name, Mod, Args, Options).
+    gen_mi:start(?MODULE, nolink, Name, Mod, Args, Options).
 
 start_link(Mod, Args, Options) ->
-    gen:start(?MODULE, link, Mod, Args, Options).
+    gen_mi:start(?MODULE, link, Mod, Args, Options).
 
 start_link(Name, Mod, Args, Options) ->
-    gen:start(?MODULE, link, Name, Mod, Args, Options).
+    gen_mi:start(?MODULE, link, Name, Mod, Args, Options).
 
 start_monitor(Mod, Args, Options) ->
-    gen:start(?MODULE, monitor, Mod, Args, Options).
+    gen_mi:start(?MODULE, monitor, Mod, Args, Options).
 
 start_monitor(Name, Mod, Args, Options) ->
-    gen:start(?MODULE, monitor, Name, Mod, Args, Options).
+    gen_mi:start(?MODULE, monitor, Name, Mod, Args, Options).
 
 
 %% -----------------------------------------------------------------
@@ -219,10 +219,10 @@ start_monitor(Name, Mod, Args, Options) ->
 %% be monitored.
 %% -----------------------------------------------------------------
 stop(Name) ->
-    gen:stop(Name).
+    gen_mi:stop(Name).
 
 stop(Name, Reason, Timeout) ->
-    gen:stop(Name, Reason, Timeout).
+    gen_mi:stop(Name, Reason, Timeout).
 
 %% -----------------------------------------------------------------
 %% Make a call to a generic server.
@@ -232,7 +232,7 @@ stop(Name, Reason, Timeout) ->
 %% is handled here (? Shall we do that here (or rely on timeouts) ?).
 %% ----------------------------------------------------------------- 
 call(Name, Request) ->
-    case catch gen:call(Name, '$gen_call', Request) of
+    case catch gen_mi:call(Name, '$gen_call', Request) of
 	{ok,Res} ->
 	    Res;
 	{'EXIT',Reason} ->
@@ -240,7 +240,7 @@ call(Name, Request) ->
     end.
 
 call(Name, Request, Timeout) ->
-    case catch gen:call(Name, '$gen_call', Request, Timeout) of
+    case catch gen_mi:call(Name, '$gen_call', Request, Timeout) of
 	{ok,Res} ->
 	    Res;
 	{'EXIT',Reason} ->
@@ -254,22 +254,22 @@ call(Name, Request, Timeout) ->
 
 -spec send_request(Name::server_ref(), Request::term()) -> request_id().
 send_request(Name, Request) ->
-    gen:send_request(Name, '$gen_call', Request).
+    gen_mi:send_request(Name, '$gen_call', Request).
 
 -spec wait_response(RequestId::request_id(), timeout()) ->
         {reply, Reply::term()} | 'timeout' | {error, {Reason::term(), server_ref()}}.
 wait_response(RequestId, Timeout) ->
-    gen:wait_response(RequestId, Timeout).
+    gen_mi:wait_response(RequestId, Timeout).
 
 -spec receive_response(RequestId::request_id(), timeout()) ->
         {reply, Reply::term()} | 'timeout' | {error, {Reason::term(), server_ref()}}.
 receive_response(RequestId, Timeout) ->
-    gen:receive_response(RequestId, Timeout).
+    gen_mi:receive_response(RequestId, Timeout).
 
 -spec check_response(Msg::term(), RequestId::request_id()) ->
         {reply, Reply::term()} | 'no_reply' | {error, {Reason::term(), server_ref()}}.
 check_response(Msg, RequestId) ->
-    gen:check_response(Msg, RequestId).
+    gen_mi:check_response(Msg, RequestId).
 
 %% -----------------------------------------------------------------
 %% Make a cast to a generic server.
@@ -297,7 +297,7 @@ cast_msg(Request) -> {'$gen_cast',Request}.
 %% Send a reply to the client.
 %% -----------------------------------------------------------------
 reply(From, Reply) ->
-    gen:reply(From, Reply).
+    gen_mi:reply(From, Reply).
 
 %% ----------------------------------------------------------------- 
 %% Asynchronous broadcast, returns nothing, it's just send 'n' pray
@@ -363,10 +363,10 @@ enter_loop(Mod, Options, State, Timeout) ->
     enter_loop(Mod, Options, State, self(), Timeout).
 
 enter_loop(Mod, Options, State, ServerName, Timeout) ->
-    Name = gen:get_proc_name(ServerName),
-    Parent = gen:get_parent(),
-    Debug = gen:debug_options(Name, Options),
-    HibernateAfterTimeout = gen:hibernate_after(Options),
+    Name = gen_mi:get_proc_name(ServerName),
+    Parent = gen_mi:get_parent(),
+    Debug = gen_mi:debug_options(Name, Options),
+    HibernateAfterTimeout = gen_mi:hibernate_after(Options),
     loop(Parent, Name, State, Mod, Timeout, HibernateAfterTimeout, Debug).
 
 %%%========================================================================
@@ -383,9 +383,9 @@ enter_loop(Mod, Options, State, ServerName, Timeout) ->
 init_it(Starter, self, Name, Mod, Args, Options) ->
     init_it(Starter, self(), Name, Mod, Args, Options);
 init_it(Starter, Parent, Name0, Mod, Args, Options) ->
-    Name = gen:name(Name0),
-    Debug = gen:debug_options(Name, Options),
-    HibernateAfterTimeout = gen:hibernate_after(Options),
+    Name = gen_mi:name(Name0),
+    Debug = gen_mi:debug_options(Name, Options),
+    HibernateAfterTimeout = gen_mi:hibernate_after(Options),
 
     case init_it(Mod, Args) of
 	{ok, {ok, State}} ->
@@ -402,11 +402,11 @@ init_it(Starter, Parent, Name0, Mod, Args, Options) ->
 	    %% (Otherwise, the parent process could get
 	    %% an 'already_started' error if it immediately
 	    %% tried starting the process again.)
-	    gen:unregister_name(Name0),
+	    gen_mi:unregister_name(Name0),
 	    proc_lib:init_ack(Starter, {error, Reason}),
 	    exit(Reason);
 	{ok, ignore} ->
-	    gen:unregister_name(Name0),
+	    gen_mi:unregister_name(Name0),
 	    proc_lib:init_ack(Starter, ignore),
 	    exit(normal);
 	{ok, Else} ->
@@ -414,7 +414,7 @@ init_it(Starter, Parent, Name0, Mod, Args, Options) ->
 	    proc_lib:init_ack(Starter, {error, Error}),
 	    exit(Error);
 	{'EXIT', Class, Reason, Stacktrace} ->
-	    gen:unregister_name(Name0),
+	    gen_mi:unregister_name(Name0),
 	    proc_lib:init_ack(Starter, {error, terminate_reason(Class, Reason, Stacktrace)}),
 	    erlang:raise(Class, Reason, Stacktrace)
     end.
@@ -500,8 +500,8 @@ do_send(Dest, Msg) ->
 do_multi_call([Node], Name, Req, infinity) when Node =:= node() ->
     % Special case when multi_call is used with local node only.
     % In that case we can leverage the benefit of recv_mark optimisation
-    % existing in simple gen:call.
-    try gen:call(Name, '$gen_call', Req, infinity) of
+    % existing in simple gen_mi:call.
+    try gen_mi:call(Name, '$gen_call', Req, infinity) of
         {ok, Res} -> {[{Node, Res}],[]}
     catch exit:_ ->
         {[], [Node]}
@@ -1211,7 +1211,7 @@ mod(_) -> "t".
 %%-----------------------------------------------------------------
 format_status(Opt, StatusData) ->
     [PDict, SysState, Parent, Debug, [Name, State, Mod, _Time, _HibernateAfterTimeout]] = StatusData,
-    Header = gen:format_status_header("Status for generic server", Name),
+    Header = gen_mi:format_status_header("Status for generic server", Name),
     Log = sys:get_log(Debug),
     Specific = case format_status(Opt, Mod, PDict, State) of
 		  S when is_list(S) -> S;
