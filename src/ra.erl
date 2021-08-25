@@ -735,7 +735,7 @@ overview(System) ->
     {error, term()} |
     {timeout, ra_server_id()}.
 process_command(ServerId, Cmd, Timeout) ->
-    erlang:display(["r:738", "self", self(), "ServerId", ServerId, "Cmd", Cmd, "Timeout", Timeout]),
+%%    erlang:display(["r:738", "self", self(), "ServerId", ServerId, "Cmd", Cmd, "Timeout", Timeout]),
     ra_server_proc:command(ServerId, usr(Cmd, await_consensus), Timeout).
 
 %% @doc Same as `process_command/3' with the default timeout of 5000 ms.
@@ -922,7 +922,7 @@ consistent_query(ServerId, QueryFun) ->
                        Timeout :: timeout()) ->
     ra_server_proc:ra_leader_call_ret(Reply :: term()).
 consistent_query(ServerId, QueryFun, Timeout) ->
-    erlang:display(["r:925", "self", self(), "ServerId", ServerId, "QueryFun", QueryFun, "Timeout", Timeout]),
+%%    erlang:display(["r:925", "self", self(), "ServerId", ServerId, "QueryFun", QueryFun, "Timeout", Timeout]),
     ra_server_proc:query(ServerId, QueryFun, consistent, Timeout).
 
 %% @doc Returns a list of cluster members

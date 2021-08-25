@@ -70,13 +70,23 @@ run(#{name := Name,
     %% wait for each pid
     Wait = ((Secs * 10000) * 4),
     [begin
-         receive
+%%       MIL receive
+         MIL = application:get_env(ra, msg_int_layer, undefined),
+         MsgRef = make_ref(),
+         message_interception_layer:enable_timeout(MIL, self(), MsgRef),
+
+         ResultRcv = receive
              {done, P} ->
                  io:format("~w is done ", [P]),
-                 ok
-         after  Wait ->
-                   exit({timeout, P})
-         end
+                 ok;
+             {mil_timeout, MsgRef, _} ->
+               exit({timeout, P})
+%%              after  Wait ->
+%%             exit({timeout, P})
+         end,
+         message_interception_layer:disable_timeout(MIL, self(), MsgRef),
+         ResultRcv
+%%         LIM
      end || P <- Pids],
     End = os:system_time(millisecond),
     Taken = End - Start,
@@ -121,8 +131,12 @@ send_n(Leader, Data, N) ->
 client_loop(0, 0, _Leader, _Data) ->
     ok;
 client_loop(Num, Sent, _Leader, Data) ->
-    receive
-        {ra_event, Leader, {applied, Applied}} ->
+%%  MIL receive
+%%    MIL = application:get_env(ra, msg_int_layer, undefined),
+%%    MsgRef = make_ref(),
+%%    message_interception_layer:enable_timeout(MIL, self(), MsgRef),
+    ResultRcv = receive
+                  {ra_event, Leader, {applied, Applied}} ->
             N = length(Applied),
             ToSend = min(Sent, N),
             send_n(Leader, Data, ToSend),
@@ -134,7 +148,12 @@ client_loop(Num, Sent, _Leader, Data) ->
         {ra_event, Leader, Evt} ->
             io:format("unexpected ra_event ~w", [Evt]),
             client_loop(Num, Sent, Leader, Data)
-    end.
+%%        {mil_timeout, MsgRef, _} ->
+%%            erlang:display("received timeout")
+        end,
+%%    message_interception_layer:disable_timeout(MIL, self(), MsgRef),
+    ResultRcv.
+%%  LIM
 
 spawn_client(Parent, Leader, Num, DataSize) when Num >= ?PIPE_SIZE ->
     Data = crypto:strong_rand_bytes(DataSize),
