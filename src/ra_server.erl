@@ -1060,6 +1060,7 @@ handle_follower({ra_log_event, Evt}, State = #{log := Log0}) ->
     {Log, Effects} = ra_log:handle_event(Evt, Log0),
     {follower, State#{log => Log}, Effects};
 handle_follower(#pre_vote_rpc{} = PreVote, State) ->
+    erlang:display("ra_server 1063"),
     process_pre_vote(follower, PreVote, State);
 handle_follower(#request_vote_rpc{candidate_id = Cand, term = Term},
                 #{current_term := Term, voted_for := VotedFor,

@@ -77,9 +77,6 @@
 -type ra_cmd_ret() :: ra_server_proc:ra_cmd_ret().
 
 -type environment_param() ::
-    % MIL
-    {msg_int_layer, pid()} |
-    % LIM
     {data_dir, file:filename()} |
     {wal_data_dir, file:filename()} |
     {segment_max_entries, non_neg_integer()} |
@@ -400,7 +397,7 @@ start_cluster(System, [#{cluster_name := ClusterName} | _] = ServerConfigs,
         _ ->
             StartedIds = [I || #{id := I} <- Started],
             NotStartedIds = [I || #{id := I} <- NotStarted],
-            %% try triggering elections until one succeeds
+          %% try triggering elections until one succeeds
             _ = lists:any(fun (N) -> ok == trigger_election(N) end,
                           sort_by_local(StartedIds, [])),
             %% TODO: handle case where no election was successfully triggered

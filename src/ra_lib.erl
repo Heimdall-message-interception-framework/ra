@@ -267,10 +267,9 @@ collect([], Acc, _Timeout) ->
     Acc;
 collect([{{Pid, MRef}, E} | Next], {Left, Right}, Timeout) ->
 %%  MIL receive
-%%    MIL = application:get_env(ra, msg_int_layer, undefined),
-%%    MsgRef = make_ref(),
-%%    message_interception_layer:enable_timeout(MIL, self(), MsgRef),
-%%    ResultRcv =
+%%    MIL = application:get_env(sched_msg_interception_erlang, msg_int_layer, undefined),
+%%    TimerRef = message_interception_layer:enable_timeout(MIL, self(), Timeout, timeout),
+    ResultRcv =
     receive
         {Pid, true} ->
             erlang:demonitor(MRef, [flush]),
@@ -280,13 +279,13 @@ collect([{{Pid, MRef}, E} | Next], {Left, Right}, Timeout) ->
             collect(Next, {Left, [E | Right]}, Timeout);
         {'DOWN', MRef, process, Pid, _Reason} ->
             collect(Next, {Left, [E | Right]}, Timeout)
-%%        {mil_timeout, MsgRef, _} ->
+%%        {mil_timeout, TimerRef, timeout} ->
 %%            exit(partition_parallel_timeout)
         after Timeout ->
                    exit(partition_parallel_timeout)
-      end.
-%%      message_interception_layer:disable_timeout(MIL, self(), MsgRef),
-%%      ResultRcv.
+      end,
+%%      message_interception_layer:disable_timeout(MIL, self(), TimerRef),
+      ResultRcv.
 %% LIM
 
 retry(Func, Attempts) ->

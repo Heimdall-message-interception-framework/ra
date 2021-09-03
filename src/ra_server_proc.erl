@@ -142,10 +142,7 @@
                                                     ra_server:command()),
                 election_timeout_set = false :: boolean(),
                 %% the log index last time gc was forced
-                force_gc_index = 0 :: ra_index(),
-                % MIL
-                msg_int_layer :: undefined | pid()
-                % LIM
+                force_gc_index = 0 :: ra_index()
               }).
 
 %%%===================================================================
@@ -155,7 +152,10 @@
 -spec start_link(ra_server:ra_server_config()) -> gen_mi_statem_start_ret().
 start_link(Config = #{id := Id}) ->
     Name = ra_lib:ra_server_id_to_local_name(Id),
-    gen_mi_statem:start_link({local, Name}, ?MODULE, Config, []).
+    Result = gen_mi_statem:start_link({local, Name}, ?MODULE, Config, []),
+    erlang:display(["ra server proc id", Id]),
+    erlang:display(["ra server proc pid", Result]),
+    Result.
 
 -spec command(server_loc(), ra_command(), timeout()) ->
     ra_cmd_ret().
@@ -202,12 +202,9 @@ state_query(ServerLoc, Spec, Timeout) ->
 -spec trigger_election(ra_server_id(), timeout()) -> ok.
 trigger_election(ServerId, Timeout) ->
 %%  MIL, hack to register client since this is always done as first step; name is pid
-    MIL = application:get_env(ra, msg_int_layer, undefined),
-    case MIL of
-      undefined -> ok;
-      _ -> message_interception_layer:register_with_name(MIL,
-              list_to_atom(pid_to_list(self())), self(), client)
-  end,
+    MIL = msg_interception_helpers:get_message_interception_layer(),
+    message_interception_layer:register_with_name(MIL,
+              list_to_atom(pid_to_list(self())), self(), client),
   %%  LIM
 %%  erlang:display(["rsp:204", "self", self(), "ServerId", ServerId, "Timeout", Timeout]),
   gen_mi_statem:call(ServerId, trigger_election, Timeout).
@@ -262,6 +259,12 @@ multi_statem_call([ServerId | ServerIds], Msg, Errs, Timeout) ->
 %%%===================================================================
 
 init(Config0 = #{id := Id, cluster_name := ClusterName}) ->
+    erlang:display(["init ra server proc", "self", self(), "id", Id]),
+%%  MIL registration in gen_mi_statem's init_it did not work
+    MIL = msg_interception_helpers:get_message_interception_layer(),
+    {Name, _} = Id,
+    message_interception_layer:register_with_name(MIL, Name, self(), ra_server_proc),
+%%  LIM
     process_flag(trap_exit, true),
     Key = ra_lib:ra_server_id_to_local_name(Id),
     Config = #{counter := Counter,
@@ -296,9 +299,6 @@ init(Config0 = #{id := Id, cluster_name := ClusterName}) ->
     ReceiveSnapshotTimeout = application:get_env(ra, receive_snapshot_timeout,
                                                  ?DEFAULT_RECEIVE_SNAPSHOT_TIMEOUT),
     AtenPollInt = application:get_env(aten, poll_interval, 1000),
-    % MIL
-    MsgIntLayer = application:get_env(ra, msg_int_layer, undefined),
-    % LIM
     State = #state{conf = #conf{log_id = LogId,
                                 cluster_name = ClusterName,
                                 name = Key,
@@ -311,12 +311,9 @@ init(Config0 = #{id := Id, cluster_name := ClusterName}) ->
                                 aten_poll_interval = AtenPollInt,
                                 counter = Counter
                                 },
-                  % MIL
-                  msg_int_layer = MsgIntLayer,
-                  % LIM
                   server_state = ServerState},
     ok = net_kernel:monitor_nodes(true, [nodedown_reason]),
-    {ok, recover, State, [{next_event, cast, go}], MsgIntLayer}.
+    {ok, recover, State, [{next_event, cast, go}], undefined}.
 
 %% callback mode
 callback_mode() -> [state_functions, state_enter].
@@ -700,8 +697,10 @@ follower(_, tick_timeout, State0) ->
 follower({call, From}, {log_fold, Fun, Term}, State) ->
     fold_log(From, Fun, Term, State);
 follower(EventType, Msg, State0) ->
+    erlang:display(["rsp 700", "Msg", Msg]),
     case handle_follower(Msg, State0) of
         {follower, State1, Effects} ->
+            erlang:display(["rsp 703", "Effects", Effects]),
             {State2, Actions} = ?HANDLE_EFFECTS(Effects, EventType, State1),
             State = follower_leader_change(State0, State2),
             {keep_state, State, Actions};
@@ -888,20 +887,20 @@ terminate(Reason, StateName,
             _ = spawn(fun () ->
                               Ref = erlang:monitor(process, Self),
 %%                              MIL receive
-                              MIL = application:get_env(ra, msg_int_layer, undefined),
-                              MsgRef = make_ref(),
-                              message_interception_layer:enable_timeout(MIL, self(), MsgRef),
+                              MIL = msg_interception_helpers:get_message_interception_layer(),
+                              erlang:display(["rsp 889", "self", self()]),
+                              TimerRef = message_interception_layer:enable_timeout(MIL, self(), 5000, timeout),
                               ResultRcv = receive
                                   {'DOWN', Ref, _, _, _} ->
                                       ok = supervisor:terminate_child(
                                              SrvSup, Parent);
-                                  {mil_timeout, MsgRef, _} ->
+                                  {mil_timeout, TimerRef, timeout} ->
 %%                                      erlang:display("received timeout")
                                       ok
 %%                              after 5000 ->
 %%                                        ok
                               end,
-                              message_interception_layer:disable_timeout(MIL, self(), MsgRef),
+                              message_interception_layer:disable_timeout(MIL, self(), TimerRef),
                               ResultRcv
 %%                      LIM
                       end),
@@ -989,6 +988,7 @@ handle_raft_state(RaftState, Msg,
                          election_timeout_set = Set} = State) ->
     {NextState, ServerState1, Effects} =
         ra_server:RaftState(Msg, ServerState0),
+    erlang:display(["rsp 990", "Msg", Msg]),
     ElectionTimeoutSet = case Msg of
                              election_timeout -> false;
                              _ -> Set
@@ -1005,7 +1005,9 @@ handle_pre_vote(Msg, State) ->
     handle_raft_state(?FUNCTION_NAME, Msg, State).
 
 handle_follower(Msg, State) ->
-    handle_raft_state(?FUNCTION_NAME, Msg, State).
+    Result = handle_raft_state(?FUNCTION_NAME, Msg, State),
+    erlang:display(["rsp 1008", "Msg", Msg, "Result", Result]),
+    Result.
 
 handle_receive_snapshot(Msg, State) ->
     handle_raft_state(?FUNCTION_NAME, Msg, State).
@@ -1056,13 +1058,8 @@ handle_effect(_, {send_rpc, To, Rpc}, _,
                                  %% exception so we should always end up setting
                                  %% the peer status back to normal
 %%              MIL
-                                 MIL = application:get_env(ra, msg_int_layer, undefined),
-                                 case MIL of
-                                   undefined -> ok;
-                             %%%%       here ServerRef is a PID
-                                   _ -> message_interception_layer:register_with_name(MIL,
-                                        list_to_atom(pid_to_list(self())), self(), middle_proc)
-                                 end,
+                                 MIL = msg_interception_helpers:get_message_interception_layer(),
+                                 message_interception_layer:register_with_name(MIL, list_to_atom(pid_to_list(self())), self(), middle_proc),
 %%              LIM
 %%                                 erlang:display(["rsp:1040 - Self : ?; self : ?; To : ?; Rpc : ? ", Self, self(), To, Rpc]),
                                  ok = gen_mi_statem:cast(To, Rpc),
@@ -1206,13 +1203,10 @@ handle_effect(_, {send_vote_requests, VoteRequests}, _, % EvtType
     [begin
          _ = spawn(fun () ->
 %%           MIL
-             MIL = application:get_env(ra, msg_int_layer, undefined),
-             case MIL of
-               undefined -> ok;
+             MIL = msg_interception_helpers:get_message_interception_layer(),
                %%%%       here ServerRef is a PID
-               _ -> message_interception_layer:register_with_name(MIL,
-                 list_to_atom(pid_to_list(self())), self(), middle_proc)
-             end,
+             message_interception_layer:register_with_name(MIL,
+                 list_to_atom(pid_to_list(self())), self(), middle_proc),
 %%           LIM
 %%             erlang:display(["rsp:1180", "self", self(), "N", N, "M", M, "T", T]),
              Reply = gen_mi_statem:call(N, M, T),

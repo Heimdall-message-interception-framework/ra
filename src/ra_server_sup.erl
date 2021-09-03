@@ -31,6 +31,8 @@ start_link(Config) ->
 
 init([Config0]) ->
     Id = maps:get(id, Config0),
+%%  TODO: this is only called once but subsequent multiple times?
+    erlang:display(["ra server sup Id", Id]),
     Config = Config0#{parent => self()},
     Name = ra_lib:ra_server_id_to_local_name(Id),
     SupFlags = #{strategy => one_for_one,
