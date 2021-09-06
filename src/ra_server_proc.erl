@@ -152,10 +152,7 @@
 -spec start_link(ra_server:ra_server_config()) -> gen_mi_statem_start_ret().
 start_link(Config = #{id := Id}) ->
     Name = ra_lib:ra_server_id_to_local_name(Id),
-    Result = gen_mi_statem:start_link({local, Name}, ?MODULE, Config, []),
-    erlang:display(["ra server proc id", Id]),
-    erlang:display(["ra server proc pid", Result]),
-    Result.
+    gen_mi_statem:start_link({local, Name}, ?MODULE, Config, []).
 
 -spec command(server_loc(), ra_command(), timeout()) ->
     ra_cmd_ret().
@@ -164,12 +161,10 @@ command(ServerLoc, Cmd, Timeout) ->
 
 -spec cast_command(ra_server_id(), ra_command()) -> ok.
 cast_command(ServerId, Cmd) ->
-%%    erlang:display(["rsp:167", "self", self(), "ServerId", ServerId, "Cmd", Cmd]),
     gen_mi_statem:cast(ServerId, {command, low, Cmd}).
 
 -spec cast_command(ra_server_id(), ra_command_priority(), ra_command()) -> ok.
 cast_command(ServerId, Priority, Cmd) ->
-%%  erlang:display(["rsp:172", "self", self(), "ServerId", ServerId, "Priority", Priority, "Cmd", Cmd]),
   gen_mi_statem:cast(ServerId, {command, Priority, Cmd}).
 
 -spec query(server_loc(), query_fun(),
@@ -186,7 +181,6 @@ query(ServerLoc, QueryFun, consistent, Timeout) ->
 
 -spec log_fold(ra_server_id(), fun(), term(), integer()) -> term().
 log_fold(ServerId, Fun, InitialState, Timeout) ->
-%%    erlang:display(["rsp:189", "self", self(), "Fun", Fun, "InitialState", InitialState, "Timeout", Timeout]),
     gen_mi_statem:call(ServerId, {log_fold, Fun, InitialState}, Timeout).
 
 %% used to query the raft state rather than the machine state
@@ -206,7 +200,6 @@ trigger_election(ServerId, Timeout) ->
     message_interception_layer:register_with_name(MIL,
               list_to_atom(pid_to_list(self())), self(), client),
   %%  LIM
-%%  erlang:display(["rsp:204", "self", self(), "ServerId", ServerId, "Timeout", Timeout]),
   gen_mi_statem:call(ServerId, trigger_election, Timeout).
 
 -spec transfer_leadership(ra_server_id(), ra_server_id(), timeout()) ->
@@ -216,7 +209,6 @@ transfer_leadership(ServerId, TargetServerId, Timeout) ->
 
 -spec ping(ra_server_id(), timeout()) -> safe_call_ret({pong, states()}).
 ping(ServerId, Timeout) ->
-%%    erlang:display(["rsp:214 - self : ?, Timeout : ? ", self(), Timeout]),
     gen_mi_statem_safe_call(ServerId, ping, Timeout).
 
 leader_call(ServerLoc, Msg, Timeout) ->
@@ -226,7 +218,6 @@ statem_call(ServerIds, Msg, Timeout)
   when is_list(ServerIds) ->
     multi_statem_call(ServerIds, Msg, [], Timeout);
 statem_call(ServerId, Msg, Timeout) ->
-%%    erlang:display(["rsp:224", "self", self(), "Msg", Msg, "Timeout", Timeout]),
     case gen_mi_statem_safe_call(ServerId, Msg, Timeout) of
         {redirect, Leader} ->
             statem_call(Leader, Msg, Timeout);
@@ -259,7 +250,6 @@ multi_statem_call([ServerId | ServerIds], Msg, Errs, Timeout) ->
 %%%===================================================================
 
 init(Config0 = #{id := Id, cluster_name := ClusterName}) ->
-    erlang:display(["init ra server proc", "self", self(), "id", Id]),
 %%  MIL registration in gen_mi_statem's init_it did not work
     MIL = msg_interception_helpers:get_message_interception_layer(),
     {Name, _} = Id,
@@ -379,7 +369,6 @@ leader(EventType, {command, low, {CmdType, Data, ReplyMode}},
     %% event buffer.
     case queue:is_empty(Delayed) of
         true ->
-%%            erlang:display(["rsp:377 - self : ?; flush_commands", self()]),
             ok = gen_mi_statem:cast(self(), flush_commands);
         false ->
             ok
@@ -409,7 +398,6 @@ leader(EventType, flush_commands,
         true ->
             ok;
         false ->
-%%            erlang:display(["rsp:407 - self : ?, flush_commands ", self()]),
             ok = gen_mi_statem:cast(self(), flush_commands)
     end,
     {keep_state, State#state{delayed_commands = DelQ}, Actions};
@@ -697,10 +685,8 @@ follower(_, tick_timeout, State0) ->
 follower({call, From}, {log_fold, Fun, Term}, State) ->
     fold_log(From, Fun, Term, State);
 follower(EventType, Msg, State0) ->
-    erlang:display(["rsp 700", "Msg", Msg]),
     case handle_follower(Msg, State0) of
         {follower, State1, Effects} ->
-            erlang:display(["rsp 703", "Effects", Effects]),
             {State2, Actions} = ?HANDLE_EFFECTS(Effects, EventType, State1),
             State = follower_leader_change(State0, State2),
             {keep_state, State, Actions};
@@ -888,7 +874,6 @@ terminate(Reason, StateName,
                               Ref = erlang:monitor(process, Self),
 %%                              MIL receive
                               MIL = msg_interception_helpers:get_message_interception_layer(),
-                              erlang:display(["rsp 889", "self", self()]),
                               TimerRef = message_interception_layer:enable_timeout(MIL, self(), 5000, timeout),
                               ResultRcv = receive
                                   {'DOWN', Ref, _, _, _} ->
@@ -988,7 +973,6 @@ handle_raft_state(RaftState, Msg,
                          election_timeout_set = Set} = State) ->
     {NextState, ServerState1, Effects} =
         ra_server:RaftState(Msg, ServerState0),
-    erlang:display(["rsp 990", "Msg", Msg]),
     ElectionTimeoutSet = case Msg of
                              election_timeout -> false;
                              _ -> Set
@@ -1006,7 +990,6 @@ handle_pre_vote(Msg, State) ->
 
 handle_follower(Msg, State) ->
     Result = handle_raft_state(?FUNCTION_NAME, Msg, State),
-    erlang:display(["rsp 1008", "Msg", Msg, "Result", Result]),
     Result.
 
 handle_receive_snapshot(Msg, State) ->
@@ -1061,7 +1044,6 @@ handle_effect(_, {send_rpc, To, Rpc}, _,
                                  MIL = msg_interception_helpers:get_message_interception_layer(),
                                  message_interception_layer:register_with_name(MIL, list_to_atom(pid_to_list(self())), self(), middle_proc),
 %%              LIM
-%%                                 erlang:display(["rsp:1040 - Self : ?; self : ?; To : ?; Rpc : ? ", Self, self(), To, Rpc]),
                                  ok = gen_mi_statem:cast(To, Rpc),
                                  incr_counter(Conf, ?C_RA_SRV_MSGS_SENT, 1),
 %%              TBC: need to intercept this and where does it reach?
@@ -1149,12 +1131,10 @@ handle_effect(_, {cast, To, Msg}, _, State, Actions) ->
     {State, Actions};
 handle_effect(_, {reply, From, Reply}, _, State, Actions) ->
     % reply directly
-%%    erlang:display(["rsp:1127", "self", self(), "From", From, "Reply", Reply]),
     ok = gen_mi_statem:reply(From, Reply),
     {State, Actions};
 handle_effect(_, {reply, Reply}, {call, From}, State, Actions) ->
     % reply directly
-%%    erlang:display(["rsp:1133", "self", self(), "From", From, "Reply", Reply]),
     ok = gen_mi_statem:reply(From, Reply),
     {State, Actions};
 handle_effect(_, {reply, Reply}, EvtType, _, _) ->
@@ -1208,9 +1188,7 @@ handle_effect(_, {send_vote_requests, VoteRequests}, _, % EvtType
              message_interception_layer:register_with_name(MIL,
                  list_to_atom(pid_to_list(self())), self(), middle_proc),
 %%           LIM
-%%             erlang:display(["rsp:1180", "self", self(), "N", N, "M", M, "T", T]),
              Reply = gen_mi_statem:call(N, M, T),
-%%                               erlang:display(["rsp:1182", "self", self(), "Me", Me, "Reply", Reply]),
                                ok = gen_mi_statem:cast(Me, Reply)
                    end)
      end || {N, M} <- VoteRequests],
@@ -1281,7 +1259,6 @@ send_rpc(To, Msg, State) ->
     gen_cast(To, Msg, State).
 
 gen_cast(To, Msg, State) ->
-%%    erlang:display(["rsp:1257", "self", self(), "To", To, "Msg", Msg]),
     send(To, {'$gen_cast', Msg}, State#state.conf).
 
 send_ra_event(To, Msg, FromId, EvtType, State) ->
@@ -1324,7 +1301,6 @@ machine_version(#state{server_state = ServerState}) ->
 process_pending_queries(NewLeader,
                         #state{server_state = ServerState0} = State) ->
     {ServerState, Froms} = ra_server:process_new_leader_queries(ServerState0),
-%%    [erlang:display(["rsp:1294", "self", self, "From", F]) || F <- Froms],
     [_ = gen_mi_statem:reply(F, {redirect, NewLeader})
      || F <- Froms],
     State#state{server_state = ServerState}.
@@ -1370,7 +1346,6 @@ follower_leader_change(Old, #state{pending_commands = Pending,
             % leader has either changed or just been set
             ?INFO("~s: detected a new leader ~w in term ~b",
                   [log_id(New), NewLeader, current_term(New)]),
-%%            [erlang:display(["rsp:1340", "self", self, "From", From]) || {From, _Data} <- Pending],
             [ok = gen_mi_statem:reply(From, {redirect, NewLeader})
                || {From, _Data} <- Pending],
             process_pending_queries(NewLeader,
@@ -1397,7 +1372,6 @@ stop_monitor(MRef) ->
 
 gen_mi_statem_safe_call(ServerId, Msg, Timeout) ->
     try
-%%        erlang:display(["rsp:1367", "self", self(), "Msg", Msg, "Timeout", Timeout]),
         gen_mi_statem:call(ServerId, Msg, Timeout)
     catch
          exit:{timeout, _} ->
@@ -1493,7 +1467,6 @@ send_snapshots(Me, Id, Term, To, ChunkSize, SnapState) ->
 
     Result = read_chunks_and_send_rpc(RPC, To, ReadState, 1,
                                       ChunkSize, SnapState),
-%%    erlang:display(["rsp:1463", "self", self(), "To", To, "Result", Result]),
     ok = gen_mi_statem:cast(Me, {To, Result}).
 
 read_chunks_and_send_rpc(RPC0,
@@ -1508,7 +1481,6 @@ read_chunks_and_send_rpc(RPC0,
     %% rpcs
     RPC1 = RPC0#install_snapshot_rpc{chunk_state = {Num, ChunkFlag},
                                      data = Data},
-%%    erlang:display(["rsp:1478", "self", self(), "RPC1", RPC1, dirty_timeout, ?INSTALL_SNAP_RPC_TIMEOUT]),
     Res1 = gen_mi_statem:call(To, RPC1,
                            {dirty_timeout, ?INSTALL_SNAP_RPC_TIMEOUT}),
     case ContState of

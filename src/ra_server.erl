@@ -715,7 +715,6 @@ handle_leader({transfer_leadership, ServerId},
     ?DEBUG("~s: transfer leadership to ~w requested",
            [LogId, ServerId]),
     %% TODO find a timeout
-    erlang:display(["rs:717", "self", self(), "ServerId", ServerId, "try_become_leader"]),
     gen_mi_statem:cast(ServerId, try_become_leader),
     {await_condition,
      State#{condition => fun transfer_leadership_condition/2,
@@ -1060,7 +1059,6 @@ handle_follower({ra_log_event, Evt}, State = #{log := Log0}) ->
     {Log, Effects} = ra_log:handle_event(Evt, Log0),
     {follower, State#{log => Log}, Effects};
 handle_follower(#pre_vote_rpc{} = PreVote, State) ->
-    erlang:display("ra_server 1063"),
     process_pre_vote(follower, PreVote, State);
 handle_follower(#request_vote_rpc{candidate_id = Cand, term = Term},
                 #{current_term := Term, voted_for := VotedFor,
