@@ -139,6 +139,7 @@
 -spec write(writer_id(), atom(), ra_index(), ra_term(), term()) ->
     ok | {error, wal_down}.
 write(From, Wal, Idx, Term, Entry) ->
+%%  TODO: here we can check entry
     named_cast(Wal, {append, From, Idx, Term, Entry}).
 
 -spec truncate_write(writer_id(), atom(), ra_index(), ra_term(), term()) ->
@@ -376,6 +377,10 @@ write_data({UId, _} = Id, Idx, Term, Data0, Trunc,
            #state{conf = #conf{compute_checksums = ComputeChecksum},
                   wal = #wal{writer_name_cache = Cache0,
                              entry_count = Count} = Wal} = State00) ->
+%%  OBS
+    {_, PId} = Id,
+    gen_event:sync_notify({global, om}, {ra_log, {{pid, PId}, {idx, Idx}, {term, Term}, {trunc, Trunc}, {data, Data0}}}),
+%%  SBO
     EntryData = to_binary(Data0),
     EntryDataLen = byte_size(EntryData),
     {HeaderData, HeaderLen, Cache} = serialize_header(UId, Trunc, Cache0),

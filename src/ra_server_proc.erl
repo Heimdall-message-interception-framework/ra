@@ -195,6 +195,7 @@ state_query(ServerLoc, Spec, Timeout) ->
 
 -spec trigger_election(ra_server_id(), timeout()) -> ok.
 trigger_election(ServerId, Timeout) ->
+%%  TODO: register in test case
 %%  MIL, hack to register client since this is always done as first step; name is pid
     MIL = msg_interception_helpers:get_message_interception_layer(),
     message_interception_layer:register_with_name(MIL,
@@ -989,8 +990,7 @@ handle_pre_vote(Msg, State) ->
     handle_raft_state(?FUNCTION_NAME, Msg, State).
 
 handle_follower(Msg, State) ->
-    Result = handle_raft_state(?FUNCTION_NAME, Msg, State),
-    Result.
+    handle_raft_state(?FUNCTION_NAME, Msg, State).
 
 handle_receive_snapshot(Msg, State) ->
     handle_raft_state(?FUNCTION_NAME, Msg, State).
@@ -1047,7 +1047,8 @@ handle_effect(_, {send_rpc, To, Rpc}, _,
                                  ok = gen_mi_statem:cast(To, Rpc),
                                  incr_counter(Conf, ?C_RA_SRV_MSGS_SENT, 1),
 %%              TBC: need to intercept this and where does it reach?
-                                 Self ! {update_peer, To, #{status => normal}}
+                                 message_interception_layer:msg_command(MIL, self(), Self, erlang, send, [{update_peer, To, #{status=>normal}}])
+%%                                 Self ! {update_peer, To, #{status => normal}}
                          end),
             {update_peer(To, #{status => suspended}, State0), Actions};
         noconnect ->
@@ -1438,14 +1439,21 @@ send(To, Msg, Conf) ->
     % we do not want to block the ra server whilst attempting to set up
     % a TCP connection to a potentially down node or when the distribution
     % buffer is full, better to drop and try again later
-    case erlang:send(To, Msg, [noconnect, nosuspend]) of
-        ok ->
-            incr_counter(Conf, ?C_RA_SRV_MSGS_SENT, 1),
-            ok;
-        Res ->
-            incr_counter(Conf, ?C_RA_SRV_DROPPED_SENDS, 1),
-            Res
-    end.
+%%  Original
+%%    case erlang:send(To, Msg, [noconnect, nosuspend]) of
+%%        ok ->
+%%            incr_counter(Conf, ?C_RA_SRV_MSGS_SENT, 1),
+%%            ok;
+%%        Res ->
+%%            incr_counter(Conf, ?C_RA_SRV_DROPPED_SENDS, 1),
+%%            Res
+%%    end.
+%%  NEW, we ignore both noconnect and nosuspend return values
+%%  nosuspend: should not happen since we control messages in an almost-synchronous manner
+%%  noconnect: should not distinguish here for the sake of reproducibility
+  MIL = msg_interception_helpers:get_message_interception_layer(),
+  message_interception_layer:msg_command(MIL, self(), To, erlang, send, [To, Msg]),
+  incr_counter(Conf, ?C_RA_SRV_MSGS_SENT, 1).
 
 
 fold_log(From, Fun, Term, State) ->
