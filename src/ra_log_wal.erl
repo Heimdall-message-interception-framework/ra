@@ -25,6 +25,9 @@
 -compile(inline).
 
 -include("ra.hrl").
+%% OBS
+-include("ra_observer_events.hrl").
+%% SBO
 
 -define(CURRENT_VERSION, 1).
 -define(MAGIC, "RAWA").
@@ -379,7 +382,9 @@ write_data({UId, _} = Id, Idx, Term, Data0, Trunc,
                              entry_count = Count} = Wal} = State00) ->
 %%  OBS
     {_, PId} = Id,
-    gen_event:sync_notify({global, om}, {ra_log, {{pid, PId}, {idx, Idx}, {term, Term}, {trunc, Trunc}, {data, Data0}}}),
+    RaLogEvent = #ra_log_obs_event{idx=Idx, term=Term, trunc=Trunc, data=Data0},
+    gen_event:sync_notify({global, om},
+              {process, #obs_process_event{process=PId, event_type=ra_log, event_content=RaLogEvent}}),
 %%  SBO
     EntryData = to_binary(Data0),
     EntryDataLen = byte_size(EntryData),
