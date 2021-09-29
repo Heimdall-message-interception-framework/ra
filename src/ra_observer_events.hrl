@@ -15,6 +15,18 @@
   data :: any()
 }).
 
+-record(ra_log_meta_obs_event, {
+  name :: atom(),
+  uid :: any(), % ra_uid()
+  key :: any(), % key()
+  value :: any() % value()
+}).
+
+-record(ra_server_state_variable_obs_event, {
+  state_variable :: atom(),  % one of current_term, leader_id, commit_index, last_applied
+  value :: any() % new value
+}).
+
 %% copy-pasted due to dependency issue
 -record(obs_process_event, {
   process :: pid() | atom(),

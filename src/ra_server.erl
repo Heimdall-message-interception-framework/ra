@@ -278,6 +278,12 @@ init(#{id := Id,
     MacMod = ra_machine:which_module(Machine, MacVer),
 
     CommitIndex = max(LastApplied, FirstIndex),
+%%  OBS track everything, even if in ra_log_meta (initial 0 not otherwise)
+    ra_observer_helpers:submit_ra_server_state_variable_event(current_term, CurrentTerm),
+    ra_observer_helpers:submit_ra_server_state_variable_event(commit_index, CommitIndex),
+    ra_observer_helpers:submit_ra_server_state_variable_event(last_applied, LastApplied),
+    ra_observer_helpers:submit_ra_server_state_variable_event(voted_for, VotedFor),
+%%  SBO
     Cfg = #cfg{id = Id,
                uid = UId,
                log_id = LogId,
@@ -400,6 +406,9 @@ handle_leader({PeerId, #append_entries_reply{term = Term}},
             ?NOTICE("~s: leader saw append_entries_reply from ~w for term ~b "
                     "abdicates term: ~b!",
                     [LogId, PeerId, Term, CurTerm]),
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, undefined),
+%%          SBO
             {follower, update_term(Term, State0#{leader_id => undefined}), []}
     end;
 handle_leader({PeerId, #append_entries_reply{success = false,
@@ -527,6 +536,9 @@ handle_leader({PeerId, #install_snapshot_result{term = Term}},
         _ ->
             ?DEBUG("~s: leader saw install_snapshot_result from ~w for term ~b"
                   " abdicates term: ~b!", [LogId, PeerId, Term, CurTerm]),
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, undefined),
+%%          SBO
             {follower, update_term(Term, State0#{leader_id => undefined}), []}
     end;
 handle_leader({PeerId, #install_snapshot_result{last_index = LastIndex}},
@@ -577,8 +589,11 @@ handle_leader(#install_snapshot_rpc{term = Term,
             ?INFO("~s: leader saw install_snapshot_rpc from ~w for term ~b "
                   "abdicates term: ~b!",
                   [LogId, Evt#install_snapshot_rpc.leader_id, Term, CurTerm]),
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, undefined),
+%%          SBO
             {follower, update_term(Term, State0#{leader_id => undefined}),
-             [{next_event, Evt}]}
+               [{next_event, Evt}]}
     end;
 handle_leader(#append_entries_rpc{term = Term} = Msg,
               #{current_term := CurTerm,
@@ -588,7 +603,10 @@ handle_leader(#append_entries_rpc{term = Term} = Msg,
           "abdicates term: ~b!",
           [LogId, Msg#append_entries_rpc.leader_id,
            Term, CurTerm]),
-    {follower, update_term(Term, State0#{leader_id => undefined}),
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, undefined),
+%%          SBO
+            {follower, update_term(Term, State0#{leader_id => undefined}),
      [{next_event, Msg}]};
 handle_leader(#append_entries_rpc{term = Term}, #{current_term := Term,
                                                   cfg := #cfg{log_id = LogId}}) ->
@@ -601,7 +619,6 @@ handle_leader(#append_entries_rpc{leader_id = LeaderId},
     Reply = append_entries_reply(CurTerm, false, State0),
     {leader, State0, [cast_reply(Id, LeaderId, Reply)]};
 handle_leader({consistent_query, From, QueryFun},
-%%    XXX
               #{commit_index := CommitIndex,
                 cluster_change_permitted := true} = State0) ->
     QueryRef = {From, QueryFun, CommitIndex},
@@ -622,8 +639,11 @@ handle_leader(#heartbeat_rpc{term = Term} = Msg,
           "abdicates term: ~b!",
           [LogId, Msg#heartbeat_rpc.leader_id,
            Term, CurTerm]),
-    {follower, update_term(Term, State0#{leader_id => undefined}),
-     [{next_event, Msg}]};
+%%          OBS
+          ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, undefined),
+%%          SBO
+          {follower, update_term(Term, State0#{leader_id => undefined}),
+           [{next_event, Msg}]};
 handle_leader(#heartbeat_rpc{term = Term, leader_id = LeaderId},
               #{current_term := CurTerm,
                 cfg := #cfg{id = Id}} = State)
@@ -658,6 +678,9 @@ handle_leader({PeerId, #heartbeat_reply{query_index = ReplyQueryIndex,
             ?NOTICE("~s leader saw heartbeat_reply from ~w for term ~b "
                     "abdicates term: ~b!",
                     [LogId, PeerId, Term, CurTerm]),
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, undefined),
+%%          SBO
             {follower, update_term(Term, State0#{leader_id => undefined}), []}
     end;
 handle_leader(#request_vote_rpc{term = Term, candidate_id = Cand} = Msg,
@@ -672,6 +695,9 @@ handle_leader(#request_vote_rpc{term = Term, candidate_id = Cand} = Msg,
             ?INFO("~s: leader saw request_vote_rpc from ~w for term ~b "
                   "abdicates term: ~b!",
                   [LogId, Msg#request_vote_rpc.candidate_id, Term, CurTerm]),
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, undefined),
+%%          SBO
             {follower, update_term(Term, State0#{leader_id => undefined}),
              [{next_event, Msg}]}
     end;
@@ -690,6 +716,9 @@ handle_leader(#pre_vote_rpc{term = Term, candidate_id = Cand} = Msg,
             ?INFO("~s: leader saw pre_vote_rpc from ~w for term ~b"
                   " abdicates term: ~b!",
                   [LogId, Msg#pre_vote_rpc.candidate_id, Term, CurTerm]),
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, undefined),
+%%          SBO
             {follower, update_term(Term, State0#{leader_id => undefined}),
              [{next_event, Msg}]}
     end;
@@ -743,6 +772,9 @@ handle_candidate(#request_vote_result{term = Term, vote_granted = true},
             {State1, Effects} = make_all_rpcs(initialise_peers(State0)),
             Noop = {noop, #{ts => os:system_time(millisecond)},
                     ra_machine:version(Mac)},
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, Id),
+%%          SBO
             State = State1#{leader_id => Id},
             {leader, maps:without([votes], State),
              [{next_event, cast, {command, Noop}} | Effects]};
@@ -929,7 +961,11 @@ handle_follower(#append_entries_rpc{term = Term,
     ok = incr_counter(Cfg, ?C_RA_SRV_AER_RECEIVED_FOLLOWER, 1),
     %% this is a valid leader, append entries message
     Effects0 = [{record_leader_msg, LeaderId}],
-    State0 = update_term(Term, State00#{leader_id => LeaderId,
+%%  OBS
+    ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, LeaderId),
+    ra_observer_helpers:submit_ra_server_state_variable_event(commit_index, LeaderCommit),
+%%  SBO
+  State0 = update_term(Term, State00#{leader_id => LeaderId,
                                         commit_index => LeaderCommit}),
     case has_log_entry_or_snapshot(PLIdx, PLTerm, Log00) of
         {entry_ok, Log0} ->
@@ -1037,7 +1073,10 @@ handle_follower(#heartbeat_rpc{query_index = RpcQueryIndex, term = Term,
     State1 = update_term(Term, State0),
     #{query_index := QueryIndex} = State1,
     NewQueryIndex = max(RpcQueryIndex, QueryIndex),
-    State2 = update_query_index(State1#{leader_id => LeaderId}, NewQueryIndex),
+%%  OBS
+    ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, LeaderId),
+%%  SBO
+  State2 = update_query_index(State1#{leader_id => LeaderId}, NewQueryIndex),
     Reply = heartbeat_reply(State2),
     {follower, State2, [cast_reply(Id, LeaderId, Reply)]};
 handle_follower(#heartbeat_rpc{leader_id = LeaderId},
@@ -1084,6 +1123,9 @@ handle_follower(#request_vote_rpc{term = Term, candidate_id = Cand,
                   [LogId, Cand, {LLIdx, LLTerm}, Term, CurTerm]),
             Reply = #request_vote_result{term = Term, vote_granted = true},
             State = update_term_and_voted_for(Term, Cand, State1),
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(voted_for, Cand),
+%%          SBO
             {follower, State#{voted_for => Cand, current_term => Term},
              [{reply, Reply}]};
         false ->
@@ -1092,6 +1134,10 @@ handle_follower(#request_vote_rpc{term = Term, candidate_id = Cand,
                   " last log entry idxterm seen was: ~w",
                   [LogId, Cand, Term, {LLIdx, LLTerm}, {LastIdxTerm}]),
             Reply = #request_vote_result{term = Term, vote_granted = false},
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(current_term, Term),
+%%          SBO
+%%          TBC: why don't we update to CurTerm here?
             {follower, State1#{current_term => Term}, [{reply, Reply}]}
     end;
 handle_follower(#request_vote_rpc{term = Term, candidate_id = _Cand},
@@ -1139,7 +1185,10 @@ handle_follower(#install_snapshot_rpc{term = Term,
     SnapState0 = ra_log:snapshot_state(Log0),
     {ok, SS} = ra_snapshot:begin_accept(Meta, SnapState0),
     Log = ra_log:set_snapshot_state(SS, Log0),
-    {receive_snapshot, State0#{log => Log,
+%%  OBS
+    ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, LeaderId),
+%%  SBO
+  {receive_snapshot, State0#{log => Log,
                                leader_id => LeaderId},
      [{next_event, Rpc}, {record_leader_msg, LeaderId}]};
 handle_follower(#request_vote_result{}, State) ->
@@ -1186,6 +1235,10 @@ handle_receive_snapshot(#install_snapshot_rpc{term = Term,
             {Log, Effs} = ra_log:install_snapshot({LastIndex, LastTerm},
                                                   SnapState, Log0),
             {#{cluster := ClusterIds}, MacState} = ra_log:recover_snapshot(Log),
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(commit_index, LastIndex),
+            ra_observer_helpers:submit_ra_server_state_variable_event(last_applied, LastIndex),
+%%          SBO
             State = State0#{log => Log,
                             current_term => Term,
                             commit_index => LastIndex,
@@ -1194,6 +1247,11 @@ handle_receive_snapshot(#install_snapshot_rpc{term = Term,
                             machine_state => MacState},
             %% it was the last snapshot chunk so we can revert back to
             %% follower status
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(current_term, Term),
+            ra_observer_helpers:submit_ra_server_state_variable_event(commit_index, LastIndex),
+            ra_observer_helpers:submit_ra_server_state_variable_event(last_applied, LastIndex),
+%%          SBO
             {follower, persist_last_applied(State), [{reply, Reply} | Effs]};
         next ->
             Log = ra_log:set_snapshot_state(SnapState, Log0),
@@ -1822,7 +1880,10 @@ call_for_election(candidate, #{cfg := #cfg{id = Id, log_id = LogId} = Cfg,
     % vote for self
     VoteForSelf = #request_vote_result{term = NewTerm, vote_granted = true},
     State = update_term_and_voted_for(NewTerm, Id, State0),
-    {candidate, State#{leader_id => undefined, votes => 0},
+%%  OBS
+    ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, undefined),
+%%  SBO
+  {candidate, State#{leader_id => undefined, votes => 0},
      [{next_event, cast, VoteForSelf}, {send_vote_requests, Reqs}]};
 call_for_election(pre_vote, #{cfg := #cfg{id = Id,
                                           log_id = LogId,
@@ -1844,7 +1905,10 @@ call_for_election(pre_vote, #{cfg := #cfg{id = Id,
     VoteForSelf = #pre_vote_result{term = Term, token = Token,
                                    vote_granted = true},
     State = update_term_and_voted_for(Term, Id, State0),
-    {pre_vote, State#{leader_id => undefined, votes => 0,
+%%  OBS
+    ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, undefined),
+%%  SBO
+  {pre_vote, State#{leader_id => undefined, votes => 0,
                       pre_vote_token => Token},
      [{next_event, cast, VoteForSelf}, {send_vote_requests, Reqs}]}.
 
@@ -1873,6 +1937,9 @@ process_pre_vote(FsmState, #pre_vote_rpc{term = Term, candidate_id = Cand,
                    " for term ~b previous term ~b",
                    [log_id(State0), Cand, TheirMacVer, OurMacVer,
                     {LLIdx, LLTerm}, Term, CurTerm]),
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(voted_for, Cand),
+%%          SBO
             {FsmState, State#{voted_for => Cand},
              [{reply, pre_vote_result(Term, Token, true)}]};
         true ->
@@ -1968,6 +2035,10 @@ update_term_and_voted_for(Term, VotedFor, #{cfg := #cfg{uid = UId} = Cfg,
         false ->
             MetaName = meta_name(Cfg),
             %% as this is a rare event it is ok to go sync here
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(current_term, Term),
+            ra_observer_helpers:submit_ra_server_state_variable_event(voted_for, VotedFor),
+%%          SBO
             ok = ra_log_meta:store(MetaName, UId, current_term, Term),
             ok = ra_log_meta:store_sync(MetaName, UId, voted_for, VotedFor),
             incr_counter(Cfg, ?C_RA_SRV_TERM_AND_VOTED_FOR_UPDATES, 1),
@@ -2089,6 +2160,9 @@ apply_to(ApplyTo, ApplyFun, Notifys0, Effects0,
                                     os:system_time(millisecond) - LastTs
                             end,
             %% due to machine versioning all entries may not have been applied
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(last_applied, AppliedTo),
+%%          SBO
             apply_to(ApplyTo, ApplyFun, Notifys, Effects,
                      State#{last_applied => AppliedTo,
                             commit_latency => CommitLatency,
@@ -2220,6 +2294,9 @@ apply_with({Idx, _, {'$ra_cluster', CmdMeta, delete, ReplyType}},
     EOLEffects = ra_machine:state_enter(Module, eol, MacSt),
     % non-local return to be caught by ra_server_proc
     % need to update the state before throw
+%%  OBS
+    ra_observer_helpers:submit_ra_server_state_variable_event(last_applied, Idx),
+%%  SBO
     State = State0#{last_applied => Idx, machine_state => MacSt},
     throw({delete_and_terminate, State, EOLEffects ++ NotEffs ++ Effects1});
 apply_with({Idx, _, _} = Cmd, Acc) ->
@@ -2381,6 +2458,9 @@ increment_commit_index(State0 = #{current_term := CurrentTerm}) ->
     % log entry term matches the current term. See (§5.4.2)
     case fetch_term(PotentialNewCommitIndex, State0) of
         {CurrentTerm, State} ->
+%%          OBS
+            ra_observer_helpers:submit_ra_server_state_variable_event(commit_index, PotentialNewCommitIndex),
+%%          SBO
             State#{commit_index => PotentialNewCommitIndex};
         {_, State} ->
             State
