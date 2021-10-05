@@ -22,9 +22,6 @@
         ]).
 
 -include("ra.hrl").
-%% OBS
--include("ra_observer_events.hrl").
-%% SBO
 
 %% centralised meta data storage server for ra servers.
 
@@ -120,22 +117,12 @@ format_status(State) ->
 %% send a message to the meta data store using cast
 -spec store(atom(), ra_uid(), key(), value()) -> ok.
 store(Name, UId, Key, Value) when is_atom(Name) ->
-%%  OBS
-    RaLogMetaEvent = #ra_log_meta_obs_event{name=Name, uid=UId, key=Key, value=Value},
-    gen_event:sync_notify({global, om},
-      {process, #obs_process_event{process=self(), event_type=ra_log_meta, event_content=RaLogMetaEvent}}),
-%%  SBO
     gen_batch_server:cast(Name, {store, UId, Key, Value}).
 
 %% waits until batch has been processed and synced.
 %% when it returns the store request has been safely flushed to disk
 -spec store_sync(atom(), ra_uid(), key(), value()) -> ok.
 store_sync(Name, UId, Key, Value) ->
-%%  OBS
-    RaLogMetaEvent = #ra_log_meta_obs_event{name=Name, uid=UId, key=Key, value=Value},
-    gen_event:sync_notify({global, om},
-      {process, #obs_process_event{process=self(), event_type=ra_log_meta, event_content=RaLogMetaEvent}}),
-%%  SBO
     gen_batch_server:call(Name, {store, UId, Key, Value}, ?TIMEOUT).
 
 -spec delete(atom(), ra_uid()) -> ok.

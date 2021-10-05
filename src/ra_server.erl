@@ -1123,9 +1123,6 @@ handle_follower(#request_vote_rpc{term = Term, candidate_id = Cand,
                   [LogId, Cand, {LLIdx, LLTerm}, Term, CurTerm]),
             Reply = #request_vote_result{term = Term, vote_granted = true},
             State = update_term_and_voted_for(Term, Cand, State1),
-%%          OBS
-            ra_observer_helpers:submit_ra_server_state_variable_event(voted_for, Cand),
-%%          SBO
             {follower, State#{voted_for => Cand, current_term => Term},
              [{reply, Reply}]};
         false ->
@@ -1134,8 +1131,8 @@ handle_follower(#request_vote_rpc{term = Term, candidate_id = Cand,
                   " last log entry idxterm seen was: ~w",
                   [LogId, Cand, Term, {LLIdx, LLTerm}, {LastIdxTerm}]),
             Reply = #request_vote_result{term = Term, vote_granted = false},
-%%          OBS
-            ra_observer_helpers:submit_ra_server_state_variable_event(current_term, Term),
+%%          OBS not needed, covered by function call update_term in 1117 before CA
+%%            ra_observer_helpers:submit_ra_server_state_variable_event(current_term, Term),
 %%          SBO
 %%          TBC: why don't we update to CurTerm here?
             {follower, State1#{current_term => Term}, [{reply, Reply}]}
@@ -1235,10 +1232,6 @@ handle_receive_snapshot(#install_snapshot_rpc{term = Term,
             {Log, Effs} = ra_log:install_snapshot({LastIndex, LastTerm},
                                                   SnapState, Log0),
             {#{cluster := ClusterIds}, MacState} = ra_log:recover_snapshot(Log),
-%%          OBS
-            ra_observer_helpers:submit_ra_server_state_variable_event(commit_index, LastIndex),
-            ra_observer_helpers:submit_ra_server_state_variable_event(last_applied, LastIndex),
-%%          SBO
             State = State0#{log => Log,
                             current_term => Term,
                             commit_index => LastIndex,
@@ -1879,10 +1872,10 @@ call_for_election(candidate, #{cfg := #cfg{id = Id, log_id = LogId} = Cfg,
             || PeerId <- PeerIds],
     % vote for self
     VoteForSelf = #request_vote_result{term = NewTerm, vote_granted = true},
-    State = update_term_and_voted_for(NewTerm, Id, State0),
-%%  OBS
+%%  OBS (update leader_id before updating term to not spoil global term_leader map)
     ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, undefined),
 %%  SBO
+  State = update_term_and_voted_for(NewTerm, Id, State0),
   {candidate, State#{leader_id => undefined, votes => 0},
      [{next_event, cast, VoteForSelf}, {send_vote_requests, Reqs}]};
 call_for_election(pre_vote, #{cfg := #cfg{id = Id,
@@ -1904,10 +1897,10 @@ call_for_election(pre_vote, #{cfg := #cfg{id = Id,
     % vote for self
     VoteForSelf = #pre_vote_result{term = Term, token = Token,
                                    vote_granted = true},
-    State = update_term_and_voted_for(Term, Id, State0),
-%%  OBS
+%%  OBS (see comment above)
     ra_observer_helpers:submit_ra_server_state_variable_event(leader_id, undefined),
 %%  SBO
+  State = update_term_and_voted_for(Term, Id, State0),
   {pre_vote, State#{leader_id => undefined, votes => 0,
                       pre_vote_token => Token},
      [{next_event, cast, VoteForSelf}, {send_vote_requests, Reqs}]}.
