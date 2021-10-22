@@ -199,7 +199,9 @@ trigger_election(ServerId, Timeout) ->
 %%  MIL, hack to register client since this is always done as first step; name is pid
     MIL = msg_interception_helpers:get_message_interception_layer(),
     message_interception_layer:register_with_name(MIL,
-              list_to_atom(pid_to_list(self())), self(), client),
+      string:concat("client", pid_to_list(self())),
+      self(),
+      client),
   %%  LIM
   gen_mi_statem:call(ServerId, trigger_election, Timeout).
 
@@ -1042,7 +1044,10 @@ handle_effect(_, {send_rpc, To, Rpc}, _,
                                  %% the peer status back to normal
 %%              MIL
                                  MIL = msg_interception_helpers:get_message_interception_layer(),
-                                 message_interception_layer:register_with_name(MIL, list_to_atom(pid_to_list(self())), self(), middle_proc),
+                                 message_interception_layer:register_with_name(MIL,
+                                   string:concat("middle_proc_", pid_to_list(self())),
+                                   self(),
+                                   middle_proc),
 %%              LIM
                                  ok = gen_mi_statem:cast(To, Rpc),
                                  incr_counter(Conf, ?C_RA_SRV_MSGS_SENT, 1),
@@ -1187,7 +1192,9 @@ handle_effect(_, {send_vote_requests, VoteRequests}, _, % EvtType
              MIL = msg_interception_helpers:get_message_interception_layer(),
                %%%%       here ServerRef is a PID
              message_interception_layer:register_with_name(MIL,
-                 list_to_atom(pid_to_list(self())), self(), middle_proc),
+               string:concat("middle_proc", pid_to_list(self())),
+               self(),
+               middle_proc),
 %%           LIM
              Reply = gen_mi_statem:call(N, M, T),
                                ok = gen_mi_statem:cast(Me, Reply)
