@@ -256,7 +256,7 @@ init(Config0 = #{id := Id, cluster_name := ClusterName}) ->
 %%  MIL registration in gen_mi_statem's init_it did not work
     MIL = msg_interception_helpers:get_message_interception_layer(),
     {Name, _} = Id,
-    message_interception_layer:register_with_name(MIL, Name, self(), ra_server_proc),
+    message_interception_layer:register_with_name(MIL, atom_to_list(Name), self(), ra_server_proc),
 %%  LIM
     process_flag(trap_exit, true),
     Key = ra_lib:ra_server_id_to_local_name(Id),
