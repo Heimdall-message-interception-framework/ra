@@ -1,0 +1,4 @@
+[submodule "_checkouts/inet_tcp_proxy"]
+	path = _checkouts/inet_tcp_proxy
+	url = git-rts@gitlab.mpi-sws.org:fstutz/inet_tcp_proxy.git
+	branch = master
