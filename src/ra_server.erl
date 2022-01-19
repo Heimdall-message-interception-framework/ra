@@ -1229,6 +1229,8 @@ handle_receive_snapshot(#install_snapshot_rpc{term = Term,
     case ChunkFlag of
         last ->
             %% this is the last chunk so we can "install" it
+%%          added warning since we do not handle this with events for observers
+            logger:warning("[~p, ~p, ~p] install_snapshot, LastIndex: ~p, LastTerm: ~p, SnapState: ~p", [?MODULE, ?LINE, self(), LastIndex, LastTerm, SnapState]),
             {Log, Effs} = ra_log:install_snapshot({LastIndex, LastTerm},
                                                   SnapState, Log0),
             {#{cluster := ClusterIds}, MacState} = ra_log:recover_snapshot(Log),
@@ -1247,6 +1249,8 @@ handle_receive_snapshot(#install_snapshot_rpc{term = Term,
 %%          SBO
             {follower, persist_last_applied(State), [{reply, Reply} | Effs]};
         next ->
+%%          added warning since we do not handle this with events for observers
+            logger:warning("[~p, ~p, ~p] set_snapshot_state, SnapState: ~p", [?MODULE, ?LINE, self(), SnapState]),
             Log = ra_log:set_snapshot_state(SnapState, Log0),
             State = State0#{log => Log},
             {receive_snapshot, State, [{reply, Reply}]}

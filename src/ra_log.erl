@@ -47,6 +47,9 @@
         ]).
 
 -include("ra.hrl").
+%% OBS
+-include("ra_observer_events.hrl").
+%% SBO
 
 -define(METRICS_CACHE_POS, 2).
 -define(METRICS_OPEN_MEM_TBL_POS, 3).
@@ -751,6 +754,11 @@ wal_truncate_write(#?MODULE{cfg = #cfg{uid = UId,
     % and that prior entries should be considered stale
     ok = ra_log_wal:truncate_write({UId, self()}, Wal, Idx, Term, Data),
     ok = incr_counter(Cfg, ?C_RA_LOG_WRITE_OPS, 1),
+%%  OBS
+    RaLogEvent = #ra_log_obs_event{idx=Idx, term=Term, trunc=true, data=Data},
+    gen_event:sync_notify({global, om},
+      {process, #obs_process_event{process=self(), event_type=ra_log, event_content=RaLogEvent}}),
+%%  SBO
     State#?MODULE{last_index = Idx, last_term = Term,
                   cache = Cache#{Idx => {Idx, Term, Data}}}.
 
@@ -760,6 +768,11 @@ wal_write(#?MODULE{cfg = #cfg{uid = UId,
           {Idx, Term, Data}) ->
     case ra_log_wal:write({UId, self()}, Wal, Idx, Term, Data) of
         ok ->
+%%  OBS
+            RaLogEvent = #ra_log_obs_event{idx=Idx, term=Term, trunc=false, data=Data},
+            gen_event:sync_notify({global, om},
+              {process, #obs_process_event{process=self(), event_type=ra_log, event_content=RaLogEvent}}),
+%%  SBO
             ok = incr_counter(Cfg, ?C_RA_LOG_WRITE_OPS, 1),
             State#?MODULE{last_index = Idx, last_term = Term,
                           cache = Cache#{Idx => {Idx, Term, Data}}};
@@ -777,8 +790,17 @@ wal_write_batch(#?MODULE{cfg = #cfg{uid = UId,
                             WalC = {append, WriterId, Idx, Term, Data},
                             {[WalC | WC], N+1, C0#{Idx => {Idx, Term, Data}}}
                     end, {[], 0, Cache0}, Entries),
-
-    [{_, _, LastIdx, LastTerm, _} | _] = WalCommands,
+%%  OBS
+    lists:foreach(
+      fun({append, _WriterId, Idx, Term, Data}) ->
+        RaLogEvent = #ra_log_obs_event{idx=Idx, term=Term, trunc=false, data=Data},
+        gen_event:sync_notify({global, om},
+          {process, #obs_process_event{process=self(), event_type=ra_log, event_content=RaLogEvent}})
+      end,
+      lists:reverse(WalCommands)
+    ),
+%%  SBO
+  [{_, _, LastIdx, LastTerm, _} | _] = WalCommands,
     case ra_log_wal:write_batch(Wal, lists:reverse(WalCommands)) of
         ok ->
             ok = incr_counter(Cfg, ?C_RA_LOG_WRITE_OPS, Num),
