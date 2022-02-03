@@ -11,7 +11,7 @@
 
 -include("ra_observer_events.hrl").
 
--define(ObserverManager, {global, om}).
+-define(ObserverManager, om).
 
 %% API
 -export([submit_ra_server_state_variable_event/2]).

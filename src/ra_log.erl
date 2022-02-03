@@ -756,7 +756,7 @@ wal_truncate_write(#?MODULE{cfg = #cfg{uid = UId,
     ok = incr_counter(Cfg, ?C_RA_LOG_WRITE_OPS, 1),
 %%  OBS
     RaLogEvent = #ra_log_obs_event{idx=Idx, term=Term, trunc=true, data=Data},
-    gen_event:sync_notify({global, om},
+    gen_event:sync_notify(om,
       {process, #obs_process_event{process=self(), event_type=ra_log, event_content=RaLogEvent}}),
 %%  SBO
     State#?MODULE{last_index = Idx, last_term = Term,
@@ -770,7 +770,7 @@ wal_write(#?MODULE{cfg = #cfg{uid = UId,
         ok ->
 %%  OBS
             RaLogEvent = #ra_log_obs_event{idx=Idx, term=Term, trunc=false, data=Data},
-            gen_event:sync_notify({global, om},
+            gen_event:sync_notify(om,
               {process, #obs_process_event{process=self(), event_type=ra_log, event_content=RaLogEvent}}),
 %%  SBO
             ok = incr_counter(Cfg, ?C_RA_LOG_WRITE_OPS, 1),
@@ -794,7 +794,7 @@ wal_write_batch(#?MODULE{cfg = #cfg{uid = UId,
     lists:foreach(
       fun({append, _WriterId, Idx, Term, Data}) ->
         RaLogEvent = #ra_log_obs_event{idx=Idx, term=Term, trunc=false, data=Data},
-        gen_event:sync_notify({global, om},
+        gen_event:sync_notify(om,
           {process, #obs_process_event{process=self(), event_type=ra_log, event_content=RaLogEvent}})
       end,
       lists:reverse(WalCommands)

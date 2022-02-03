@@ -197,8 +197,7 @@ state_query(ServerLoc, Spec, Timeout) ->
 trigger_election(ServerId, Timeout) ->
 %%  TODO: register in test case
 %%  MIL, hack to register client since this is always done as first step; name is pid
-    MIL = msg_interception_helpers:get_message_interception_layer(),
-    message_interception_layer:register_with_name(MIL,
+    message_interception_layer:register_with_name(
       string:concat("client", pid_to_list(self())),
       self(),
       client),
@@ -254,9 +253,8 @@ multi_statem_call([ServerId | ServerIds], Msg, Errs, Timeout) ->
 
 init(Config0 = #{id := Id, cluster_name := ClusterName}) ->
 %%  MIL registration in gen_mi_statem's init_it did not work
-    MIL = msg_interception_helpers:get_message_interception_layer(),
     {Name, _} = Id,
-    message_interception_layer:register_with_name(MIL, atom_to_list(Name), self(), ra_server_proc),
+    message_interception_layer:register_with_name(atom_to_list(Name), self(), ra_server_proc),
 %%  LIM
     process_flag(trap_exit, true),
     Key = ra_lib:ra_server_id_to_local_name(Id),
@@ -876,8 +874,7 @@ terminate(Reason, StateName,
             _ = spawn(fun () ->
                               Ref = erlang:monitor(process, Self),
 %%                              MIL receive
-                              MIL = msg_interception_helpers:get_message_interception_layer(),
-                              TimerRef = message_interception_layer:enable_timeout(MIL, self(), 5000, timeout),
+                              TimerRef = message_interception_layer:enable_timeout(self(), 5000, timeout),
                               ResultRcv = receive
                                   {'DOWN', Ref, _, _, _} ->
                                       ok = supervisor:terminate_child(
@@ -888,7 +885,7 @@ terminate(Reason, StateName,
 %%                              after 5000 ->
 %%                                        ok
                               end,
-                              message_interception_layer:disable_timeout(MIL, self(), TimerRef),
+                              message_interception_layer:disable_timeout(self(), TimerRef),
                               ResultRcv
 %%                      LIM
                       end),
@@ -1043,8 +1040,7 @@ handle_effect(_, {send_rpc, To, Rpc}, _,
                                  %% exception so we should always end up setting
                                  %% the peer status back to normal
 %%              MIL
-                                 MIL = msg_interception_helpers:get_message_interception_layer(),
-                                 message_interception_layer:register_with_name(MIL,
+                                 message_interception_layer:register_with_name(
                                    string:concat("middle_proc_", pid_to_list(self())),
                                    self(),
                                    middle_proc),
@@ -1052,7 +1048,7 @@ handle_effect(_, {send_rpc, To, Rpc}, _,
                                  ok = gen_mi_statem:cast(To, Rpc),
                                  incr_counter(Conf, ?C_RA_SRV_MSGS_SENT, 1),
 %%              TBC: need to intercept this and where does it reach?
-                                 message_interception_layer:msg_command(MIL, self(), Self, erlang, send, [{update_peer, To, #{status=>normal}}])
+                                 message_interception_layer:msg_command(self(), Self, erlang, send, [{update_peer, To, #{status=>normal}}])
 %%                                 Self ! {update_peer, To, #{status => normal}}
                          end),
             {update_peer(To, #{status => suspended}, State0), Actions};
@@ -1189,9 +1185,8 @@ handle_effect(_, {send_vote_requests, VoteRequests}, _, % EvtType
     [begin
          _ = spawn(fun () ->
 %%           MIL
-             MIL = msg_interception_helpers:get_message_interception_layer(),
                %%%%       here ServerRef is a PID
-             message_interception_layer:register_with_name(MIL,
+             message_interception_layer:register_with_name(
                string:concat("middle_proc", pid_to_list(self())),
                self(),
                middle_proc),
@@ -1458,8 +1453,7 @@ send(To, Msg, Conf) ->
 %%  NEW, we ignore both noconnect and nosuspend return values
 %%  nosuspend: should not happen since we control messages in an almost-synchronous manner
 %%  noconnect: should not distinguish here for the sake of reproducibility
-  MIL = msg_interception_helpers:get_message_interception_layer(),
-  message_interception_layer:msg_command(MIL, self(), To, erlang, send, [To, Msg]),
+  message_interception_layer:msg_command(self(), To, erlang, send, [To, Msg]),
   incr_counter(Conf, ?C_RA_SRV_MSGS_SENT, 1).
 
 
