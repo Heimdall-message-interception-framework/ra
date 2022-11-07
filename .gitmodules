@@ -5,4 +5,4 @@
 [submodule "_checkouts/heimdall"]
 	path = _checkouts/heimdall
 	url = git@github.com:Heimdall-message-interception-framework/heimdall.git
-	branch = master
+	branch = main
