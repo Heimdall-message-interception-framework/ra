@@ -1,4 +1,6 @@
-# A Raft Implementation for Erlang and Elixir
+This is a modified version of [ra](https://github.com/rabbitmq/ra) by RabbitMQ which uses our [message interception layer](https://gitlab.mpi-sws.org/fstutz/sched_msg_interception_erlang).
+
+# A Raft Implementation for Erlang and Elixir (Original README)
 
 Ra is a [Raft](https://raft.github.io/) implementation
 by Team RabbitMQ. It is not tied to RabbitMQ and can be used in any Erlang or Elixir
