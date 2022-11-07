@@ -1,8 +1,8 @@
 [submodule "_checkouts/inet_tcp_proxy"]
 	path = _checkouts/inet_tcp_proxy
-	url = git-rts@gitlab.mpi-sws.org:fstutz/inet_tcp_proxy.git
+	url = git@github.com:Heimdall-message-interception-framework/inet_tcp_proxy.git
 	branch = master
-[submodule "_checkouts/sched_msg_interception_erlang"]
-	path = _checkouts/sched_msg_interception_erlang
-	url = git-rts@gitlab.mpi-sws.org:fstutz/sched_msg_interception_erlang.git
+[submodule "_checkouts/heimdall"]
+	path = _checkouts/heimdall
+	url = git@github.com:Heimdall-message-interception-framework/heimdall.git
 	branch = master

@@ -1,4 +1,4 @@
-This is a modified version of [ra](https://github.com/rabbitmq/ra) by RabbitMQ which uses our [message interception layer](https://gitlab.mpi-sws.org/fstutz/sched_msg_interception_erlang).
+This is a modified version of [ra](https://github.com/rabbitmq/ra) by RabbitMQ which uses our message interception framework [Heimdall](https://github.com/Heimdall-message-interception-framework/heimdall).
 
 # A Raft Implementation for Erlang and Elixir (Original README)
 
